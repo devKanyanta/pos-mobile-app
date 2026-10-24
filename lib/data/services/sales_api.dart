@@ -19,26 +19,27 @@ class SalesApi {
     String? notes,
     String? clientSaleId,
   }) async {
-    final json = await _client.post('/sales', body: {
-      'items': items.map((e) => e.toJson()).toList(),
-      if (payments.isNotEmpty)
-        'payments': payments.map((e) => e.toJson()).toList(),
-      'customerId': ?customerId,
-      if (discountAmount > 0) 'discountAmount': discountAmount,
-      'notes': ?(notes == null || notes.isEmpty ? null : notes),
-      'clientSaleId': ?clientSaleId,
-    });
+    final json = await _client.post(
+      '/sales',
+      body: {
+        'items': items.map((e) => e.toJson()).toList(),
+        if (payments.isNotEmpty)
+          'payments': payments.map((e) => e.toJson()).toList(),
+        'customerId': ?customerId,
+        if (discountAmount > 0) 'discountAmount': discountAmount,
+        'notes': ?(notes == null || notes.isEmpty ? null : notes),
+        'clientSaleId': ?clientSaleId,
+      },
+    );
     return Sale.fromJson(_map(json));
   }
 
   Future<List<Sale>> listSales() async =>
       toMapList(await _client.get('/sales')).map(Sale.fromJson).toList();
 
-  Future<List<Sale>> salesBetween(String from, String to) async =>
-      toMapList(await _client.get('/sales/date-range',
-              query: {'from': from, 'to': to}))
-          .map(Sale.fromJson)
-          .toList();
+  Future<List<Sale>> salesBetween(String from, String to) async => toMapList(
+    await _client.get('/sales/date-range', query: {'from': from, 'to': to}),
+  ).map(Sale.fromJson).toList();
 
   Future<Sale> getSale(int id) async =>
       Sale.fromJson(_map(await _client.get('/sales/$id')));
@@ -55,20 +56,26 @@ class SalesApi {
     String? zraReasonCode,
     int? refundPaymentMethodId,
   }) async {
-    final json = await _client.post('/sales/$saleId/refund', body: {
-      if (saleItemIds.isNotEmpty) 'saleItemIds': saleItemIds,
-      if (items.isNotEmpty) 'items': items,
-      'reason': ?(reason == null || reason.isEmpty ? null : reason),
-      'zraReasonCode': ?zraReasonCode,
-      'refundPaymentMethodId': ?refundPaymentMethodId,
-    });
+    final json = await _client.post(
+      '/sales/$saleId/refund',
+      body: {
+        if (saleItemIds.isNotEmpty) 'saleItemIds': saleItemIds,
+        if (items.isNotEmpty) 'items': items,
+        'reason': ?(reason == null || reason.isEmpty ? null : reason),
+        'zraReasonCode': ?zraReasonCode,
+        'refundPaymentMethodId': ?refundPaymentMethodId,
+      },
+    );
     return _map(json);
   }
 
   /// `POST /sales/{saleId}/payments`.
   Future<Payment> addPayment(int saleId, PaymentInput input) async =>
       Payment.fromJson(
-          _map(await _client.post('/sales/$saleId/payments', body: input.toJson())));
+        _map(
+          await _client.post('/sales/$saleId/payments', body: input.toJson()),
+        ),
+      );
 
   Future<List<Payment>> listPayments(int saleId) async =>
       toMapList(await _client.get('/sales/$saleId/payments'))

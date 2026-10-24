@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/api/api_exception.dart';
 import '../core/session/session_scope.dart';
 import '../data/models/report_models.dart';
+import 'theme/app_theme.dart';
+import 'widgets/state_views.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -53,50 +55,102 @@ class _ReportsScreenState extends State<ReportsScreen> {
       appBar: AppBar(
         title: const Text('Reports'),
         actions: [
-          IconButton(tooltip: 'Reload', icon: const Icon(Icons.refresh), onPressed: _load),
+          IconButton(
+            tooltip: 'Reload',
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
         ],
       ),
       body: _loading && today == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView()
           : _error != null
-              ? Center(child: Text(_error!))
-              : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Text('Today (${today?.date ?? ''})',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    ListTile(
-                      title: const Text('Sales'),
-                      trailing: Text('${today?.salesCount ?? 0}'),
+          ? StateView.error(message: _error!, onRetry: _load)
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(Gap.lg),
+                children: [
+                  _section('Today (${today?.date ?? ''})', [
+                    _metric('Sales', '${today?.salesCount ?? 0}'),
+                    _metric(
+                      'Total',
+                      (today?.totalSales ?? 0).toStringAsFixed(2),
+                      emphasize: true,
                     ),
-                    ListTile(
-                      title: const Text('Total'),
-                      trailing: Text((today?.totalSales ?? 0).toStringAsFixed(2)),
+                  ]),
+                  const SizedBox(height: Gap.xl),
+                  _section('Z-report', [
+                    _metric('Received', '${totals['received'] ?? 0}'),
+                    _metric('Refunded', '${totals['refunded'] ?? 0}'),
+                    _metric('Expected', '${totals['expected'] ?? 0}'),
+                    _metric('Declared', '${totals['declared'] ?? 0}'),
+                    _metric(
+                      'Variance',
+                      '${totals['variance'] ?? 0}',
+                      emphasize: true,
                     ),
-                    const Divider(),
-                    Text('Z-report', style: Theme.of(context).textTheme.titleMedium),
-                    ListTile(
-                      title: const Text('Received'),
-                      trailing: Text('${totals['received'] ?? 0}'),
-                    ),
-                    ListTile(
-                      title: const Text('Refunded'),
-                      trailing: Text('${totals['refunded'] ?? 0}'),
-                    ),
-                    ListTile(
-                      title: const Text('Expected'),
-                      trailing: Text('${totals['expected'] ?? 0}'),
-                    ),
-                    ListTile(
-                      title: const Text('Declared'),
-                      trailing: Text('${totals['declared'] ?? 0}'),
-                    ),
-                    ListTile(
-                      title: const Text('Variance'),
-                      trailing: Text('${totals['variance'] ?? 0}'),
-                    ),
-                  ],
-                ),
+                  ]),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _section(String title, List<Widget> rows) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: Gap.sm, left: Gap.xs),
+          child: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Card(
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0) const Divider(indent: Gap.lg, endIndent: Gap.lg),
+                rows[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metric(String label, String value, {bool emphasize = false}) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Gap.lg, vertical: Gap.md),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style:
+                (emphasize
+                        ? theme.textTheme.titleMedium
+                        : theme.textTheme.bodyLarge)
+                    ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -4,6 +4,13 @@ import '../core/api/api_exception.dart';
 import '../core/session/session_scope.dart';
 import '../data/models/catalog_models.dart';
 import '../data/models/sale_models.dart';
+import 'theme/app_theme.dart';
+import 'widgets/app_dialog.dart';
+import 'widgets/app_sheet.dart';
+import 'widgets/busy_button.dart';
+import 'widgets/notice_bar.dart';
+import 'widgets/quantity_stepper.dart';
+import 'widgets/state_views.dart';
 
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
@@ -18,6 +25,7 @@ class _SalesScreenState extends State<SalesScreen> {
   final Map<int, int> _cart = {};
   String? _error;
   bool _loading = true;
+  bool _paying = false;
 
   @override
   void initState() {
@@ -36,12 +44,13 @@ class _SalesScreenState extends State<SalesScreen> {
         session.pos.listProducts(),
         session.pos.listPaymentMethods(),
       ]);
+      if (!mounted) return;
       setState(() {
         _products = results[0] as List<Product>;
         _methods = results[1] as List<PaymentMethod>;
       });
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -68,26 +77,28 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Future<void> _checkout() async {
+    if (_paying) return;
     final sales = SessionScope.of(context).sales;
-    final method = await showModalBottomSheet<PaymentMethod>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(title: Text('Choose payment method')),
-            for (final m in _methods.where((m) => m.isActive))
-              ListTile(
-                title: Text(m.name),
-                onTap: () => Navigator.pop(context, m),
-              ),
-          ],
-        ),
-      ),
+    final messenger = ScaffoldMessenger.of(context);
+    final method = await showAppSheet<PaymentMethod>(
+      context,
+      title: 'Choose payment method',
+      subtitle: 'Total ${_total.toStringAsFixed(2)}',
+      children: [
+        for (final m in _methods.where((m) => m.isActive))
+          SheetAction(
+            icon: m.isCash
+                ? Icons.payments_outlined
+                : Icons.account_balance_wallet_outlined,
+            title: m.name,
+            onTap: () => Navigator.pop(context, m),
+          ),
+      ],
     );
     if (method == null || !mounted) return;
 
     final amount = _total;
+    setState(() => _paying = true);
     try {
       final sale = await sales.createSale(
         items: [
@@ -100,23 +111,21 @@ class _SalesScreenState extends State<SalesScreen> {
       if (!mounted) return;
       setState(_cart.clear);
       await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sale ${sale.saleNumber} completed')),
-      );
+      NoticeBar.success(messenger, 'Sale ${sale.saleNumber} completed');
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      NoticeBar.error(messenger, e.message);
+    } finally {
+      if (mounted) setState(() => _paying = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading && _products.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: LoadingView());
     }
+    final theme = Theme.of(context);
+    final active = _products.where((p) => p.active).toList();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sales'),
@@ -137,40 +146,52 @@ class _SalesScreenState extends State<SalesScreen> {
         ],
       ),
       body: _error != null
-          ? Center(child: Text(_error!))
-          : ListView(
-              children: [
-                for (final p in _products.where((p) => p.active))
-                  ListTile(
-                    title: Text(p.name),
-                    subtitle: Text(
-                        '${p.price.toStringAsFixed(2)} + VAT ${p.vatRate.toStringAsFixed(0)}%'
-                        '${p.trackInventory ? ' · stock ${p.stockQuantity}' : ''}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline),
-                          onPressed: (_cart[p.id] ?? 0) > 0 ? () => _change(p, -1) : null,
-                        ),
-                        Text('${_cart[p.id] ?? 0}'),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline),
-                          onPressed: () => _change(p, 1),
-                        ),
-                      ],
-                    ),
+          ? StateView.error(message: _error!, onRetry: _load)
+          : active.isEmpty
+          ? const StateView(
+              icon: Icons.inventory_2_outlined,
+              title: 'No products to sell yet.',
+            )
+          : ListView.separated(
+              itemCount: active.length,
+              separatorBuilder: (_, _) =>
+                  const Divider(indent: Gap.lg, endIndent: Gap.lg),
+              itemBuilder: (context, i) {
+                final p = active[i];
+                return ListTile(
+                  minTileHeight: 64,
+                  title: Text(
+                    p.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  subtitle: Text(
+                    '${p.price.toStringAsFixed(2)} + VAT ${p.vatRate.toStringAsFixed(0)}%'
+                    '${p.trackInventory ? ' · stock ${p.stockQuantity}' : ''}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  trailing: QuantityStepper(
+                    quantity: _cart[p.id] ?? 0,
+                    onDecrement: (_cart[p.id] ?? 0) > 0 && !_paying
+                        ? () => _change(p, -1)
+                        : null,
+                    onIncrement: _paying ? null : () => _change(p, 1),
+                  ),
+                );
+              },
             ),
       bottomNavigationBar: _cart.isEmpty
           ? null
           : SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: FilledButton(
+                padding: const EdgeInsets.all(Gap.md),
+                child: BusyButton(
+                  label: _paying
+                      ? 'Processing…'
+                      : 'Pay ${_total.toStringAsFixed(2)}',
+                  busy: _paying,
+                  expand: true,
                   onPressed: _checkout,
-                  child: Text('Pay ${_total.toStringAsFixed(2)}'),
                 ),
               ),
             ),
@@ -190,6 +211,7 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   List<Sale> _sales = const [];
   String? _error;
   bool _loading = true;
+  bool _working = false;
 
   @override
   void initState() {
@@ -213,76 +235,208 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
   }
 
   Future<void> _void(Sale sale) async {
-    final ok = await _confirm('Void sale ${sale.saleNumber}?');
+    final ok = await showConfirmDialog(
+      context,
+      icon: Icons.block,
+      title: 'Void sale ${sale.saleNumber}?',
+      message: 'The sale will be cancelled and its stock returned. This cannot be undone.',
+      confirmLabel: 'Void sale',
+      destructive: true,
+    );
     if (!ok || !mounted) return;
-    await _run(() => SessionScope.of(context).sales.voidSale(sale.id));
+    await _run(
+      () => SessionScope.of(context).sales.voidSale(sale.id),
+      done: 'Sale ${sale.saleNumber} voided.',
+    );
   }
 
   Future<void> _refund(Sale sale) async {
-    final ok = await _confirm('Fully refund sale ${sale.saleNumber}?');
-    if (!ok || !mounted) return;
-    await _run(() => SessionScope.of(context).sales.refund(
-          sale.id,
-          saleItemIds: [for (final i in sale.items) if (i.remainingQuantity > 0) i.id],
-          reason: 'Full refund',
-          zraReasonCode: null,
-        ));
-  }
-
-  Future<bool> _confirm(String text) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        content: Text(text),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm')),
-        ],
-      ),
+    final ok = await showConfirmDialog(
+      context,
+      icon: Icons.undo,
+      title: 'Fully refund sale ${sale.saleNumber}?',
+      message:
+          '${sale.totalAmount.toStringAsFixed(2)} will be refunded in full. '
+          'This cannot be undone.',
+      confirmLabel: 'Refund',
+      destructive: true,
     );
-    return result ?? false;
+    if (!ok || !mounted) return;
+    await _run(
+      () => SessionScope.of(context).sales.refund(
+        sale.id,
+        saleItemIds: [
+          for (final i in sale.items)
+            if (i.remainingQuantity > 0) i.id,
+        ],
+        reason: 'Full refund',
+        zraReasonCode: null,
+      ),
+      done: 'Sale ${sale.saleNumber} refunded.',
+    );
   }
 
-  Future<void> _run(Future<Object?> Function() action) async {
+  Future<void> _run(
+    Future<Object?> Function() action, {
+    required String done,
+  }) async {
+    if (_working) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _working = true);
     try {
       await action();
-      await _load();
+      NoticeBar.success(messenger, done);
+      if (mounted) await _load();
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-      }
+      NoticeBar.error(messenger, e.message);
+    } finally {
+      if (mounted) setState(() => _working = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sales history')),
+      appBar: AppBar(
+        title: const Text('Sales history'),
+        bottom: _working
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
+      ),
       body: _loading && _sales.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView()
           : _error != null
-              ? Center(child: Text(_error!))
-              : ListView(
-                  children: [
-                    for (final s in _sales)
-                      ListTile(
-                        title: Text('${s.saleNumber} · ${s.totalAmount.toStringAsFixed(2)}'),
-                        subtitle: Text('${s.saleStatus} · ${s.paymentStatus}'),
-                        trailing: s.isVoided
-                            ? null
-                            : PopupMenuButton<String>(
-                                onSelected: (v) =>
-                                    v == 'void' ? _void(s) : _refund(s),
-                                itemBuilder: (_) => [
-                                  if (!s.isFullyPaid)
-                                    const PopupMenuItem(value: 'void', child: Text('Void')),
-                                  if (s.isFullyPaid && s.refundedAmount == 0)
-                                    const PopupMenuItem(value: 'refund', child: Text('Refund')),
-                                ],
-                              ),
+          ? StateView.error(message: _error!, onRetry: _load)
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _sales.isEmpty
+                  ? const StateView(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'No sales yet',
+                      message: 'Completed sales will appear here.',
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(Gap.lg),
+                      itemCount: _sales.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: Gap.sm),
+                      itemBuilder: (context, i) => _saleCard(_sales[i]),
+                    ),
+            ),
+    );
+  }
+
+  Widget _saleCard(Sale s) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final canVoid = !s.isFullyPaid;
+    final canRefund = s.isFullyPaid && s.refundedAmount == 0;
+    final when = s.soldAt?.toLocal().toString().split('.').first;
+    final (statusLabel, statusBackground, statusForeground) = s.isVoided
+        ? ('Voided', scheme.surfaceContainerHighest, scheme.onSurfaceVariant)
+        : s.refundedAmount > 0
+        ? ('Refunded', scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        : s.isFullyPaid
+        ? ('Paid', scheme.primaryContainer, scheme.onPrimaryContainer)
+        : ('Unpaid', scheme.errorContainer, scheme.onErrorContainer);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.xs, Gap.md),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${s.saleNumber} · ${s.totalAmount.toStringAsFixed(2)}',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: Gap.xs),
+                  Wrap(
+                    spacing: Gap.sm,
+                    runSpacing: Gap.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: statusBackground,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Gap.sm,
+                            vertical: 2,
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: statusForeground,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
-                  ],
-                ),
+                      Text(
+                        '${s.saleStatus} · ${s.paymentStatus}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (when != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        when,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (!s.isVoided && (canVoid || canRefund))
+              PopupMenuButton<String>(
+                tooltip: 'Sale actions',
+                enabled: !_working,
+                onSelected: (v) => v == 'void' ? _void(s) : _refund(s),
+                itemBuilder: (_) => [
+                  if (canVoid)
+                    PopupMenuItem(
+                      value: 'void',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.block, color: scheme.error),
+                        title: const Text('Void'),
+                      ),
+                    ),
+                  if (canRefund)
+                    PopupMenuItem(
+                      value: 'refund',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.undo, color: scheme.error),
+                        title: const Text('Refund'),
+                      ),
+                    ),
+                ],
+              )
+            else
+              const SizedBox(width: Gap.md),
+          ],
+        ),
+      ),
     );
   }
 }

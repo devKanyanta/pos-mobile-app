@@ -25,15 +25,15 @@ class Customer {
   String get fullName => '$firstName $lastName'.trim();
 
   factory Customer.fromJson(Map<String, dynamic> json) => Customer(
-        id: toInt(json['id']),
-        firstName: toStr(json['firstName']),
-        lastName: toStr(json['lastName']),
-        phone: toStrOrNull(json['phone']),
-        email: toStrOrNull(json['email']),
-        tpin: toStrOrNull(json['tpin']),
-        address: toStrOrNull(json['address']),
-        isActive: toBool(json['isActive'], true),
-      );
+    id: toInt(json['id']),
+    firstName: toStr(json['firstName']),
+    lastName: toStr(json['lastName']),
+    phone: toStrOrNull(json['phone']),
+    email: toStrOrNull(json['email']),
+    tpin: toStrOrNull(json['tpin']),
+    address: toStrOrNull(json['address']),
+    isActive: toBool(json['isActive'], true),
+  );
 }
 
 /// `InventoryMovementResponse`.
@@ -95,17 +95,17 @@ class Reconciliation {
   final List<ReconciliationLine> lines;
 
   factory Reconciliation.fromJson(Map<String, dynamic> json) => Reconciliation(
-        id: toInt(json['id']),
-        businessDate: toStr(json['businessDate']),
-        openingFloat: toDouble(json['openingFloat']),
-        expectedTotal: toDouble(json['expectedTotal']),
-        declaredTotal: toDouble(json['declaredTotal']),
-        varianceTotal: toDouble(json['varianceTotal']),
-        status: toStr(json['status']),
-        notes: toStrOrNull(json['notes']),
-        submittedBy: toStrOrNull(json['submittedBy']),
-        lines: toMapList(json['lines']).map(ReconciliationLine.fromJson).toList(),
-      );
+    id: toInt(json['id']),
+    businessDate: toStr(json['businessDate']),
+    openingFloat: toDouble(json['openingFloat']),
+    expectedTotal: toDouble(json['expectedTotal']),
+    declaredTotal: toDouble(json['declaredTotal']),
+    varianceTotal: toDouble(json['varianceTotal']),
+    status: toStr(json['status']),
+    notes: toStrOrNull(json['notes']),
+    submittedBy: toStrOrNull(json['submittedBy']),
+    lines: toMapList(json['lines']).map(ReconciliationLine.fromJson).toList(),
+  );
 }
 
 /// One tender line inside a [Reconciliation].

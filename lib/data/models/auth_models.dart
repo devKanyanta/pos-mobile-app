@@ -15,10 +15,10 @@ class AuthResponse {
   bool get isAdmin => roles.contains('ADMIN');
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) => AuthResponse(
-        token: toStr(json['token']),
-        username: toStr(json['username']),
-        roles: (json['roles'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList(growable: false),
-      );
+    token: toStr(json['token']),
+    username: toStr(json['username']),
+    roles: (json['roles'] as List? ?? const [])
+        .map((e) => e.toString())
+        .toList(growable: false),
+  );
 }

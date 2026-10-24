@@ -1,33 +1,34 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kantemba/core/checkout/cart.dart';
+import 'package:kantemba/core/scanning/scan_deduplicator.dart';
 import 'package:kantemba/data/models/catalog_models.dart';
 
 Product _product(int id, {double price = 10, double vat = 0}) => Product(
-      id: id,
-      name: 'Item $id',
-      barcode: '000$id',
-      sku: null,
-      price: price,
-      costPrice: 0,
-      stockQuantity: 100,
-      active: true,
-      vatRate: vat,
-      trackInventory: false,
-      categoryId: null,
-      categoryName: null,
-      reorderLevel: null,
-      lowStock: false,
-      zraTaxType: null,
-      zraItemCode: null,
-      zraItemClassCode: null,
-      zraItemTypeCode: null,
-      zraOriginCountryCode: null,
-      zraPackagingUnitCode: null,
-      zraQuantityUnitCode: null,
-      zraMapped: false,
-      zraRegistered: false,
-    );
+  id: id,
+  name: 'Item $id',
+  barcode: '000$id',
+  sku: null,
+  price: price,
+  costPrice: 0,
+  stockQuantity: 100,
+  active: true,
+  vatRate: vat,
+  trackInventory: false,
+  categoryId: null,
+  categoryName: null,
+  reorderLevel: null,
+  lowStock: false,
+  zraTaxType: null,
+  zraItemCode: null,
+  zraItemClassCode: null,
+  zraItemTypeCode: null,
+  zraOriginCountryCode: null,
+  zraPackagingUnitCode: null,
+  zraQuantityUnitCode: null,
+  zraMapped: false,
+  zraRegistered: false,
+);
 
 void main() {
   group('Cart', () {
@@ -80,15 +81,24 @@ void main() {
     test('repeated detections of a held barcode are ignored', () {
       final d = ScanDeduplicator();
       expect(d.accept('111', t0), isTrue);
-      expect(d.accept('111', t0.add(const Duration(milliseconds: 100))), isFalse);
-      expect(d.accept('111', t0.add(const Duration(milliseconds: 900))), isFalse);
+      expect(
+        d.accept('111', t0.add(const Duration(milliseconds: 100))),
+        isFalse,
+      );
+      expect(
+        d.accept('111', t0.add(const Duration(milliseconds: 900))),
+        isFalse,
+      );
     });
 
     test('a deliberate re-scan after a pause is accepted again', () {
       final d = ScanDeduplicator();
       expect(d.accept('111', t0), isTrue);
       // Still seen 900 ms later (held); then the camera loses it for 2 s.
-      expect(d.accept('111', t0.add(const Duration(milliseconds: 900))), isFalse);
+      expect(
+        d.accept('111', t0.add(const Duration(milliseconds: 900))),
+        isFalse,
+      );
       expect(d.accept('111', t0.add(const Duration(seconds: 3))), isTrue);
     });
 

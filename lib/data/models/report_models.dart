@@ -21,11 +21,11 @@ class TodaySummary {
   final Map<String, double> receivedByMethod;
 
   factory TodaySummary.fromJson(Map<String, dynamic> json) => TodaySummary(
-        date: toStr(json['date']),
-        salesCount: toInt(json['salesCount']),
-        totalSales: toDouble(json['totalSales']),
-        receivedByMethod: _toDoubleMap(json['receivedByMethod']),
-      );
+    date: toStr(json['date']),
+    salesCount: toInt(json['salesCount']),
+    totalSales: toDouble(json['totalSales']),
+    receivedByMethod: _toDoubleMap(json['receivedByMethod']),
+  );
 }
 
 /// `DashboardResponse` from `GET /dashboard`.
@@ -53,19 +53,23 @@ class Dashboard {
   final String reconciliationStatusToday;
 
   factory Dashboard.fromJson(Map<String, dynamic> json) => Dashboard(
-        plan: toStr(json['plan'], 'MICRO'),
-        today: TodaySummary.fromJson(
-            Map<String, dynamic>.from(json['today'] as Map? ?? const {})),
-        lowStockCount: toInt(json['lowStockCount']),
-        lowStockItems:
-            toMapList(json['lowStockItems']).map(Product.fromJson).toList(),
-        zraPending: toInt(json['zraPending']),
-        zraFailed: toInt(json['zraFailed']),
-        salesNeedingReview: toInt(json['salesNeedingReview']),
-        deviceQueuedTransactions: toInt(json['deviceQueuedTransactions']),
-        reconciliationStatusToday:
-            toStr(json['reconciliationStatusToday'], 'NOT_RECONCILED'),
-      );
+    plan: toStr(json['plan'], 'MICRO'),
+    today: TodaySummary.fromJson(
+      Map<String, dynamic>.from(json['today'] as Map? ?? const {}),
+    ),
+    lowStockCount: toInt(json['lowStockCount']),
+    lowStockItems: toMapList(json['lowStockItems'])
+        .map(Product.fromJson)
+        .toList(),
+    zraPending: toInt(json['zraPending']),
+    zraFailed: toInt(json['zraFailed']),
+    salesNeedingReview: toInt(json['salesNeedingReview']),
+    deviceQueuedTransactions: toInt(json['deviceQueuedTransactions']),
+    reconciliationStatusToday: toStr(
+      json['reconciliationStatusToday'],
+      'NOT_RECONCILED',
+    ),
+  );
 }
 
 /// `DailySalesReport` from `GET /reports/sales/daily`.
@@ -93,8 +97,9 @@ class DailySalesReport {
         totalRevenue: toDouble(json['totalRevenue']),
         totalVat: toDouble(json['totalVat']),
         paymentMethodBreakdown: _toDoubleMap(json['paymentMethodBreakdown']),
-        topProducts:
-            toMapList(json['topProducts']).map(ProductSummary.fromJson).toList(),
+        topProducts: toMapList(json['topProducts'])
+            .map(ProductSummary.fromJson)
+            .toList(),
       );
 }
 
@@ -140,8 +145,8 @@ class ProductSummary {
   final double totalRevenue;
 
   factory ProductSummary.fromJson(Map<String, dynamic> json) => ProductSummary(
-        productName: toStr(json['productName']),
-        totalQuantity: toInt(json['totalQuantity']),
-        totalRevenue: toDouble(json['totalRevenue']),
-      );
+    productName: toStr(json['productName']),
+    totalQuantity: toInt(json['totalQuantity']),
+    totalRevenue: toDouble(json['totalRevenue']),
+  );
 }

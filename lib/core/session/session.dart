@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import '../../data/models/auth_models.dart';
 import '../../data/services/pos_api.dart';
@@ -18,16 +20,22 @@ const String kDefaultApiBaseUrl = String.fromEnvironment(
 
 /// Holds the signed-in user, the API base URL and the typed API services.
 class Session extends ChangeNotifier {
-  Session({TokenStore? tokenStore, FlutterSecureStorage? settingsStorage})
-      : _tokenStore = tokenStore ?? TokenStore(),
-        _settings = settingsStorage ?? const FlutterSecureStorage() {
+  /// [httpClient] lets tests run the whole app against a fake server.
+  Session({
+    TokenStore? tokenStore,
+    FlutterSecureStorage? settingsStorage,
+    this._httpClient,
+  }) : _tokenStore = tokenStore ?? TokenStore(),
+       _settings = settingsStorage ?? const FlutterSecureStorage() {
     _rebuildServices();
   }
 
   static const _baseUrlKey = 'kantemba.baseUrl';
+  static const _themeModeKey = 'kantemba.themeMode';
 
   final TokenStore _tokenStore;
   final FlutterSecureStorage _settings;
+  final http.Client? _httpClient;
   ApiClient? _client;
   late PosApi pos;
   late SalesApi sales;
@@ -36,6 +44,7 @@ class Session extends ChangeNotifier {
   String? _username;
   List<String> _roles = const [];
   String _baseUrl = kDefaultApiBaseUrl;
+  ThemeMode _themeMode = ThemeMode.system;
   bool _restored = false;
 
   bool get isRestored => _restored;
@@ -43,7 +52,13 @@ class Session extends ChangeNotifier {
   String? get username => _username;
   List<String> get roles => _roles;
   bool get isAdmin => _roles.contains('ADMIN');
+
+  /// ADMIN and MANAGER may create and edit products and receive stock. The
+  /// server enforces the real permissions; this only hides what would be refused.
+  bool get canManageProducts =>
+      _roles.contains('ADMIN') || _roles.contains('MANAGER');
   String get baseUrl => _baseUrl;
+  ThemeMode get themeMode => _themeMode;
 
   /// Loads a saved token and API base URL at startup.
   Future<void> restore() async {
@@ -52,6 +67,8 @@ class Session extends ChangeNotifier {
       _baseUrl = savedUrl;
       _rebuildServices();
     }
+    _themeMode = ThemeMode.values.asNameMap()[await _settings.read(key: _themeModeKey)] ??
+        ThemeMode.system;
     _username = await _tokenStore.readUsername();
     final token = await _tokenStore.readToken();
     if (token == null || token.isEmpty) _username = null;
@@ -59,8 +76,14 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signIn({required String username, required String password}) async {
-    final AuthResponse auth = await pos.login(username: username, password: password);
+  Future<void> signIn({
+    required String username,
+    required String password,
+  }) async {
+    final AuthResponse auth = await pos.login(
+      username: username,
+      password: password,
+    );
     await _store(auth);
   }
 
@@ -97,6 +120,19 @@ class Session extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Switches the app between light, dark and the phone's setting. The change
+  /// applies immediately; saving it for the next launch is best effort.
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (mode == _themeMode) return;
+    _themeMode = mode;
+    notifyListeners();
+    try {
+      await _settings.write(key: _themeModeKey, value: mode.name);
+    } catch (_) {
+      // Not persisted (e.g. storage unavailable); the choice still holds for this run.
+    }
+  }
+
   /// Saves a new API base URL and reconnects the services.
   Future<void> setBaseUrl(String url) async {
     final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
@@ -120,6 +156,7 @@ class Session extends ChangeNotifier {
       baseUrl: _baseUrl,
       tokenProvider: _tokenStore.readToken,
       onUnauthorized: _handleUnauthorized,
+      httpClient: _httpClient,
     );
     _client = client;
     pos = PosApi(client);

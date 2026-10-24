@@ -4,6 +4,8 @@ import 'core/session/session.dart';
 import 'core/session/session_scope.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
+import 'ui/theme/app_theme.dart';
+import 'ui/widgets/state_views.dart';
 
 void main() {
   runApp(const KantembaApp());
@@ -35,17 +37,18 @@ class _KantembaAppState extends State<KantembaApp> {
   Widget build(BuildContext context) {
     return SessionScope(
       session: _session,
-      child: MaterialApp(
-        title: 'Kantemba POS',
-        theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-        home: ListenableBuilder(
-          listenable: _session,
-          builder: (context, _) {
-            if (!_session.isRestored) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
-            }
-            return _session.isSignedIn ? const HomeShell() : const LoginScreen();
-          },
+      child: ListenableBuilder(
+        listenable: _session,
+        builder: (context, _) => MaterialApp(
+          title: 'Kantemba POS',
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: _session.themeMode,
+          home: !_session.isRestored
+              ? const Scaffold(body: LoadingView())
+              : _session.isSignedIn
+                  ? const HomeShell()
+                  : const LoginScreen(),
         ),
       ),
     );

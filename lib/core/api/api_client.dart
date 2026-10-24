@@ -28,8 +28,11 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, String>? query}) =>
       _send('GET', path, query: query);
 
-  Future<dynamic> post(String path, {Object? body, Map<String, String>? query}) =>
-      _send('POST', path, body: body, query: query);
+  Future<dynamic> post(
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) => _send('POST', path, body: body, query: query);
 
   Future<dynamic> put(String path, {Object? body}) =>
       _send('PUT', path, body: body);
@@ -49,16 +52,24 @@ class ApiClient {
     Map<String, String>? query,
     bool auth = true,
   }) async {
-    final response =
-        await _execute(method, path, body: body, query: query, auth: auth);
+    final response = await _execute(
+      method,
+      path,
+      body: body,
+      query: query,
+      auth: auth,
+    );
     if (response.bodyBytes.isEmpty) return null;
     final text = utf8.decode(response.bodyBytes);
     if (text.trim().isEmpty) return null;
     try {
       return jsonDecode(text);
     } on FormatException {
-      throw ApiException('Unexpected response from server.',
-          status: response.statusCode, path: path);
+      throw ApiException(
+        'Unexpected response from server.',
+        status: response.statusCode,
+        path: path,
+      );
     }
   }
 
@@ -90,12 +101,14 @@ class ApiClient {
       response = await http.Response.fromStream(streamed);
     } on TimeoutException {
       throw ApiException(
-          'The server took too long to respond. Check your connection.',
-          path: path);
+        'The server took too long to respond. Check your connection.',
+        path: path,
+      );
     } on Exception {
       throw ApiException(
-          'Cannot reach the server. Check your connection and the server address.',
-          path: path);
+        'Cannot reach the server. Check your connection and the server address.',
+        path: path,
+      );
     }
 
     final status = response.statusCode;

@@ -14,29 +14,35 @@ ApiClient _client(
   http.Client http, {
   String? token = 'abc',
   void Function()? onUnauthorized,
-}) =>
-    ApiClient(
-      baseUrl: 'http://example.test/api/v1/',
-      tokenProvider: () async => token,
-      onUnauthorized: onUnauthorized,
-      httpClient: http,
-    );
+}) => ApiClient(
+  baseUrl: 'http://example.test/api/v1/',
+  tokenProvider: () async => token,
+  onUnauthorized: onUnauthorized,
+  httpClient: http,
+);
 
 void main() {
   group('ApiClient', () {
     test('sends bearer token and decodes JSON', () async {
       late http.Request seen;
-      final client = _client(MockClient((request) async {
-        seen = request;
-        return http.Response(jsonEncode({'ok': true}), 200,
-            headers: {'content-type': 'application/json'});
-      }));
+      final client = _client(
+        MockClient((request) async {
+          seen = request;
+          return http.Response(
+            jsonEncode({'ok': true}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
 
       final result = await client.get('/products', query: {'active': 'true'});
 
       expect(result, {'ok': true});
-      expect(seen.url.toString(),
-          'http://example.test/api/v1/products?active=true');
+      expect(
+        seen.url.toString(),
+        'http://example.test/api/v1/products?active=true',
+      );
       expect(seen.headers['Authorization'], 'Bearer abc');
     });
 
@@ -57,14 +63,20 @@ void main() {
     });
 
     test('maps server error message and status', () async {
-      final client = _client(MockClient((_) async =>
-          http.Response(jsonEncode({'message': 'Stock too low'}), 409)));
+      final client = _client(
+        MockClient(
+          (_) async =>
+              http.Response(jsonEncode({'message': 'Stock too low'}), 409),
+        ),
+      );
 
       expect(
         () => client.post('/sales', body: {}),
-        throwsA(isA<ApiException>()
-            .having((e) => e.message, 'message', 'Stock too low')
-            .having((e) => e.status, 'status', 409)),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.message, 'message', 'Stock too low')
+              .having((e) => e.status, 'status', 409),
+        ),
       );
     });
 
@@ -73,8 +85,13 @@ void main() {
 
       expect(
         () => client.get('/products/9'),
-        throwsA(isA<ApiException>().having(
-            (e) => e.message, 'message', 'The requested item was not found.')),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'The requested item was not found.',
+          ),
+        ),
       );
     });
 
@@ -90,9 +107,11 @@ void main() {
     });
 
     test('reports unreachable server as ApiException', () async {
-      final client = _client(MockClient((_) async {
-        throw http.ClientException('connection refused');
-      }));
+      final client = _client(
+        MockClient((_) async {
+          throw http.ClientException('connection refused');
+        }),
+      );
 
       expect(() => client.get('/sales'), throwsA(isA<ApiException>()));
     });
@@ -143,7 +162,7 @@ void main() {
         'saleStatus': 'VOIDED',
         'totalAmount': '30',
         'items': [
-          {'id': 1, 'productId': 2, 'productName': 'A', 'quantity': 1}
+          {'id': 1, 'productId': 2, 'productName': 'A', 'quantity': 1},
         ],
         'payments': [],
       });
@@ -153,14 +172,15 @@ void main() {
     });
 
     test('SaleItemInput and PaymentInput serialise to request JSON', () {
-      expect(
-        const SaleItemInput(productId: 1, quantity: 2).toJson(),
-        {'productId': 1, 'quantity': 2, 'discountAmount': 0.0},
-      );
-      expect(
-        const PaymentInput(paymentMethodId: 4, amount: 10).toJson(),
-        {'paymentMethodId': 4, 'amount': 10.0},
-      );
+      expect(const SaleItemInput(productId: 1, quantity: 2).toJson(), {
+        'productId': 1,
+        'quantity': 2,
+        'discountAmount': 0.0,
+      });
+      expect(const PaymentInput(paymentMethodId: 4, amount: 10).toJson(), {
+        'paymentMethodId': 4,
+        'amount': 10.0,
+      });
     });
   });
 }

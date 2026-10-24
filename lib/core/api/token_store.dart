@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Persists the bearer token in the platform secure store (Android Keystore).
 class TokenStore {
   TokenStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   static const _tokenKey = 'kantemba.jwt';
   static const _usernameKey = 'kantemba.username';

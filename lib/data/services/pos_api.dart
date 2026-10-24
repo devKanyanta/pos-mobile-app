@@ -1,5 +1,6 @@
 import '../../core/api/api_client.dart';
 import '../../core/api/api_exception.dart';
+import '../../core/checkout/product_lookup.dart';
 import '../models/auth_models.dart';
 import '../models/business_models.dart';
 import '../models/catalog_models.dart';
@@ -8,7 +9,7 @@ import '../models/report_models.dart';
 import '../models/json_utils.dart';
 
 /// Auth, merchant, catalogue, customer and dashboard endpoints.
-class PosApi {
+class PosApi implements ProductLookup {
   PosApi(this._client);
 
   final ApiClient _client;
@@ -19,10 +20,10 @@ class PosApi {
     required String username,
     required String password,
   }) async {
-    final json = await _client.post('/auth/login', body: {
-      'username': username,
-      'password': password,
-    });
+    final json = await _client.post(
+      '/auth/login',
+      body: {'username': username, 'password': password},
+    );
     return AuthResponse.fromJson(_map(json));
   }
 
@@ -34,14 +35,17 @@ class PosApi {
     required String username,
     required String password,
   }) async {
-    final json = await _client.post('/auth/register', body: {
-      'firstName': firstName,
-      'lastName': lastName,
-      'email': email,
-      'phoneNumber': phoneNumber,
-      'username': username,
-      'password': password,
-    });
+    final json = await _client.post(
+      '/auth/register',
+      body: {
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'phoneNumber': phoneNumber,
+        'username': username,
+        'password': password,
+      },
+    );
     return AuthResponse.fromJson(_map(json));
   }
 
@@ -51,7 +55,9 @@ class PosApi {
       MerchantProfile.fromJson(_map(await _client.get('/merchant')));
 
   Future<MerchantProfile> updateMerchant(Map<String, dynamic> body) async =>
-      MerchantProfile.fromJson(_map(await _client.put('/merchant', body: body)));
+      MerchantProfile.fromJson(
+        _map(await _client.put('/merchant', body: body)),
+      );
 
   // ---- Dashboard ----
 
@@ -66,21 +72,27 @@ class PosApi {
   Future<Category> createCategory({
     required String name,
     String? description,
-  }) async =>
-      Category.fromJson(_map(await _client.post('/categories', body: {
-        'name': name,
-        'description': description,
-      })));
+  }) async => Category.fromJson(
+    _map(
+      await _client.post(
+        '/categories',
+        body: {'name': name, 'description': description},
+      ),
+    ),
+  );
 
   Future<Category> updateCategory(
     int id, {
     required String name,
     String? description,
-  }) async =>
-      Category.fromJson(_map(await _client.put('/categories/$id', body: {
-        'name': name,
-        'description': description,
-      })));
+  }) async => Category.fromJson(
+    _map(
+      await _client.put(
+        '/categories/$id',
+        body: {'name': name, 'description': description},
+      ),
+    ),
+  );
 
   Future<void> deleteCategory(int id) => _client.delete('/categories/$id');
 
@@ -90,10 +102,70 @@ class PosApi {
       _list(await _client.get('/products')).map(Product.fromJson).toList();
 
   Future<List<Product>> lowStockProducts() async =>
-      _list(await _client.get('/products/low-stock')).map(Product.fromJson).toList();
+      _list(await _client.get('/products/low-stock'))
+          .map(Product.fromJson)
+          .toList();
 
   Future<Product> getProduct(int id) async =>
       Product.fromJson(_map(await _client.get('/products/$id')));
+
+  /// `GET /products/by-barcode`. Returns null only when the server says no
+  /// product has this barcode; other 404s (e.g. an older server without the
+  /// endpoint) are rethrown so they are not mistaken for an unknown barcode.
+  @override
+  Future<Product?> findByBarcode(String barcode) async {
+    try {
+      final json = await _client.get(
+        '/products/by-barcode',
+        query: {'barcode': barcode},
+      );
+      if (json == null) return null;
+      return Product.fromJson(_map(json));
+    } on ApiException catch (e) {
+      if (e.status == 404 && e.message.startsWith('No product found')) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// `POST /inventory-movements/restock`: receive [quantity] units of stock.
+  Future<void> restockProduct(int productId, int quantity, {String? notes}) =>
+      _client
+          .post(
+            '/inventory-movements/restock',
+            body: {
+              'productId': productId,
+              'quantity': quantity,
+              if (notes != null && notes.isNotEmpty) 'notes': notes,
+            },
+          )
+          .then((_) {});
+
+  /// `POST /inventory-movements/adjustment`: a signed, non-zero correction with a
+  /// required reason. The server refuses adjustments that would make stock negative.
+  Future<InventoryMovement> adjustStock(
+    int productId,
+    int quantity,
+    String reason,
+  ) async => InventoryMovement.fromJson(
+    _map(
+      await _client.post(
+        '/inventory-movements/adjustment',
+        body: {'productId': productId, 'quantity': quantity, 'reason': reason},
+      ),
+    ),
+  );
+
+  /// `GET /inventory-movements`, or `/inventory-movements/product/{id}` when [productId] is set.
+  Future<List<InventoryMovement>> listMovements({int? productId}) async =>
+      _list(
+        await _client.get(
+          productId == null
+              ? '/inventory-movements'
+              : '/inventory-movements/product/$productId',
+        ),
+      ).map(InventoryMovement.fromJson).toList();
 
   Future<Product> createProduct(Map<String, dynamic> body) async =>
       Product.fromJson(_map(await _client.post('/products', body: body)));
@@ -118,8 +190,10 @@ class PosApi {
   /// Returns null when no customer has this phone number (the API answers 404).
   Future<Customer?> findCustomerByPhone(String phone) async {
     try {
-      final json =
-          await _client.get('/customers/search', query: {'phone': phone});
+      final json = await _client.get(
+        '/customers/search',
+        query: {'phone': phone},
+      );
       if (json == null) return null;
       return Customer.fromJson(_map(json));
     } on ApiException catch (e) {

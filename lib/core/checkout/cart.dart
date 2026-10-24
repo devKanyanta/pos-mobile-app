@@ -4,7 +4,8 @@ import '../../data/models/catalog_models.dart';
 class CartLine {
   CartLine({required this.product, this.quantity = 1});
 
-  final Product product;
+  /// Latest backend-confirmed product data (price, VAT, stock).
+  Product product;
   int quantity;
 
   /// Price including VAT, as shown to the cashier.
@@ -13,7 +14,8 @@ class CartLine {
   double get lineTotal => unitTotal * quantity;
 }
 
-/// In-memory cart for the active sale. Keyed by product id.
+/// In-memory cart for the active sale. Keyed by product id. Amounts here are
+/// an estimate for display; the server calculates the real totals.
 class Cart {
   final Map<int, CartLine> _lines = {};
 
@@ -27,10 +29,12 @@ class Cart {
 
   int quantityOf(int productId) => _lines[productId]?.quantity ?? 0;
 
-  /// Adds [quantity] units of [product], creating the line if needed.
+  /// Adds [quantity] units of [product], creating the line if needed. An
+  /// existing line takes the fresher product data (the price may have changed).
   void add(Product product, {int quantity = 1}) {
     final existing = _lines[product.id];
     if (existing != null) {
+      existing.product = product;
       existing.quantity += quantity;
     } else {
       _lines[product.id] = CartLine(product: product, quantity: quantity);
@@ -39,48 +43,16 @@ class Cart {
 
   /// Sets the quantity for a product. A quantity of zero or less removes it.
   void setQuantity(int productId, int quantity) {
+    final line = _lines[productId];
+    if (line == null) return;
     if (quantity <= 0) {
       _lines.remove(productId);
     } else {
-      _lines[productId]!.quantity = quantity;
+      line.quantity = quantity;
     }
   }
 
   void remove(int productId) => _lines.remove(productId);
 
   void clear() => _lines.clear();
-}
-
-/// Suppresses repeated camera detections of the same barcode.
-///
-/// A barcode is accepted once; while the camera keeps seeing it, further
-/// detections are ignored. It is accepted again only after it has not been
-/// seen for [cooldown], or after a different barcode was accepted in between.
-/// An intentional re-scan (the code is lifted and presented again) therefore
-/// adds another unit.
-class ScanDeduplicator {
-  ScanDeduplicator({this.cooldown = const Duration(milliseconds: 1500)});
-
-  final Duration cooldown;
-  String? _lastCode;
-  DateTime? _lastSeen;
-
-  /// Returns true if [code] should be processed at time [now].
-  bool accept(String code, DateTime now) {
-    final last = _lastSeen;
-    final sameCode = code == _lastCode;
-    final stillVisible = last != null && now.difference(last) < cooldown;
-    if (sameCode && stillVisible) {
-      _lastSeen = now;
-      return false;
-    }
-    _lastCode = code;
-    _lastSeen = now;
-    return true;
-  }
-
-  void reset() {
-    _lastCode = null;
-    _lastSeen = null;
-  }
 }

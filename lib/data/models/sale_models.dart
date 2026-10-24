@@ -6,40 +6,48 @@ class SaleItemInput {
     required this.productId,
     required this.quantity,
     this.discountAmount = 0,
+    this.barcode,
   });
 
   final int productId;
   final int quantity;
   final double discountAmount;
 
+  /// The scanned barcode, sent with [productId] so the server can confirm
+  /// they refer to the same product.
+  final String? barcode;
+
   Map<String, dynamic> toJson() => {
-        'productId': productId,
-        'quantity': quantity,
-        'discountAmount': discountAmount,
-      };
+    'productId': productId,
+    'quantity': quantity,
+    'discountAmount': discountAmount,
+    if (barcode != null) 'barcode': barcode,
+  };
 }
 
 /// A tender to send with `POST /sales` or `POST /sales/{id}/payments`.
 class PaymentInput {
   const PaymentInput({
     required this.paymentMethodId,
-    required this.amount,
+    this.amount,
     this.transactionReference,
     this.payerPhone,
   });
 
   final int paymentMethodId;
-  final double amount;
+
+  /// Null settles the balance the server calculated for the sale.
+  final double? amount;
   final String? transactionReference;
   final String? payerPhone;
 
   Map<String, dynamic> toJson() => {
-        'paymentMethodId': paymentMethodId,
-        'amount': amount,
-        if (transactionReference != null)
-          'transactionReference': transactionReference,
-        if (payerPhone != null) 'payerPhone': payerPhone,
-      };
+    'paymentMethodId': paymentMethodId,
+    if (amount != null) 'amount': amount,
+    if (transactionReference != null)
+      'transactionReference': transactionReference,
+    if (payerPhone != null) 'payerPhone': payerPhone,
+  };
 }
 
 /// `SaleItemResponse`.
@@ -69,16 +77,16 @@ class SaleItem {
   int get remainingQuantity => quantity - refundedQuantity;
 
   factory SaleItem.fromJson(Map<String, dynamic> json) => SaleItem(
-        id: toInt(json['id']),
-        productId: toInt(json['productId']),
-        productName: toStr(json['productName']),
-        quantity: toInt(json['quantity']),
-        unitPrice: toDouble(json['unitPrice']),
-        lineTotal: toDouble(json['lineTotal']),
-        totalAmount: toDouble(json['totalAmount']),
-        refundedQuantity: toInt(json['refundedQuantity']),
-        itemStatus: toStr(json['itemStatus'], 'ACTIVE'),
-      );
+    id: toInt(json['id']),
+    productId: toInt(json['productId']),
+    productName: toStr(json['productName']),
+    quantity: toInt(json['quantity']),
+    unitPrice: toDouble(json['unitPrice']),
+    lineTotal: toDouble(json['lineTotal']),
+    totalAmount: toDouble(json['totalAmount']),
+    refundedQuantity: toInt(json['refundedQuantity']),
+    itemStatus: toStr(json['itemStatus'], 'ACTIVE'),
+  );
 }
 
 /// `PaymentResponse`.
@@ -108,17 +116,17 @@ class Payment {
   final String? receiptNumber;
 
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
-        id: toInt(json['id']),
-        paymentMethodName: toStr(json['paymentMethodName']),
-        paymentMethodType: toStr(json['paymentMethodType']),
-        amount: toDouble(json['amount']),
-        amountTendered: toDouble(json['amountTendered']),
-        changeAmount: toDouble(json['changeAmount']),
-        transactionReference: toStrOrNull(json['transactionReference']),
-        paymentStatus: toStr(json['paymentStatus'], 'SUCCESS'),
-        paidAt: toDateTime(json['paidAt']),
-        receiptNumber: toStrOrNull(json['receiptNumber']),
-      );
+    id: toInt(json['id']),
+    paymentMethodName: toStr(json['paymentMethodName']),
+    paymentMethodType: toStr(json['paymentMethodType']),
+    amount: toDouble(json['amount']),
+    amountTendered: toDouble(json['amountTendered']),
+    changeAmount: toDouble(json['changeAmount']),
+    transactionReference: toStrOrNull(json['transactionReference']),
+    paymentStatus: toStr(json['paymentStatus'], 'SUCCESS'),
+    paidAt: toDateTime(json['paidAt']),
+    receiptNumber: toStrOrNull(json['receiptNumber']),
+  );
 }
 
 /// `SaleResponse`, trimmed to the fields the app displays.
@@ -178,28 +186,28 @@ class Sale {
   bool get hasPayments => payments.isNotEmpty;
 
   factory Sale.fromJson(Map<String, dynamic> json) => Sale(
-        id: toInt(json['id']),
-        saleNumber: toStr(json['saleNumber']),
-        customerId: toIntOrNull(json['customerId']),
-        customerName: toStrOrNull(json['customerName']),
-        subtotal: toDouble(json['subtotal']),
-        discountAmount: toDouble(json['discountAmount']),
-        vatAmount: toDouble(json['vatAmount']),
-        totalAmount: toDouble(json['totalAmount']),
-        amountPaid: toDouble(json['amountPaid']),
-        balanceDue: toDouble(json['balanceDue']),
-        changeGiven: toDouble(json['changeGiven']),
-        refundedAmount: toDouble(json['refundedAmount']),
-        paymentStatus: toStr(json['paymentStatus'], 'PENDING'),
-        saleStatus: toStr(json['saleStatus'], 'ACTIVE'),
-        notes: toStrOrNull(json['notes']),
-        createdBy: toStrOrNull(json['createdBy']),
-        soldAt: toDateTime(json['soldAt'] ?? json['createdAt']),
-        receiptId: toIntOrNull(json['receiptId']),
-        receiptNumber: toStrOrNull(json['receiptNumber']),
-        zraStatus: toStrOrNull(json['zraStatus']),
-        needsReview: toBool(json['needsReview']),
-        items: toMapList(json['items']).map(SaleItem.fromJson).toList(),
-        payments: toMapList(json['payments']).map(Payment.fromJson).toList(),
-      );
+    id: toInt(json['id']),
+    saleNumber: toStr(json['saleNumber']),
+    customerId: toIntOrNull(json['customerId']),
+    customerName: toStrOrNull(json['customerName']),
+    subtotal: toDouble(json['subtotal']),
+    discountAmount: toDouble(json['discountAmount']),
+    vatAmount: toDouble(json['vatAmount']),
+    totalAmount: toDouble(json['totalAmount']),
+    amountPaid: toDouble(json['amountPaid']),
+    balanceDue: toDouble(json['balanceDue']),
+    changeGiven: toDouble(json['changeGiven']),
+    refundedAmount: toDouble(json['refundedAmount']),
+    paymentStatus: toStr(json['paymentStatus'], 'PENDING'),
+    saleStatus: toStr(json['saleStatus'], 'ACTIVE'),
+    notes: toStrOrNull(json['notes']),
+    createdBy: toStrOrNull(json['createdBy']),
+    soldAt: toDateTime(json['soldAt'] ?? json['createdAt']),
+    receiptId: toIntOrNull(json['receiptId']),
+    receiptNumber: toStrOrNull(json['receiptNumber']),
+    zraStatus: toStrOrNull(json['zraStatus']),
+    needsReview: toBool(json['needsReview']),
+    items: toMapList(json['items']).map(SaleItem.fromJson).toList(),
+    payments: toMapList(json['payments']).map(Payment.fromJson).toList(),
+  );
 }

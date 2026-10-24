@@ -6,8 +6,9 @@ import 'package:kantemba/core/session/session_scope.dart';
 import 'package:kantemba/ui/login_screen.dart';
 
 void main() {
-  testWidgets('login screen renders username, password and sign in',
-      (WidgetTester tester) async {
+  testWidgets('login screen renders username, password and sign in', (
+    WidgetTester tester,
+  ) async {
     final session = Session();
     await tester.pumpWidget(
       SessionScope(

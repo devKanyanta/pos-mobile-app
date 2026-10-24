@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import '../core/api/api_exception.dart';
 import '../core/session/session_scope.dart';
 import '../data/models/business_models.dart';
+import 'theme/app_theme.dart';
+import 'widgets/app_dialog.dart';
+import 'widgets/notice_bar.dart';
+import 'widgets/state_views.dart';
+import 'widgets/status_banner.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -42,7 +47,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context: context,
       builder: (_) => const _NewCustomerDialog(),
     );
-    if (created == true) await _load();
+    if (created == true) {
+      if (mounted) {
+        NoticeBar.success(ScaffoldMessenger.of(context), 'Customer added.');
+      }
+      await _load();
+    }
   }
 
   @override
@@ -51,26 +61,55 @@ class _CustomersScreenState extends State<CustomersScreen> {
       appBar: AppBar(
         title: const Text('Customers'),
         actions: [
-          IconButton(tooltip: 'Reload', icon: const Icon(Icons.refresh), onPressed: _load),
+          IconButton(
+            tooltip: 'Reload',
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        tooltip: 'Add customer',
         onPressed: _add,
         child: const Icon(Icons.person_add),
       ),
       body: _loading && _customers.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView()
           : _error != null
-              ? Center(child: Text(_error!))
-              : ListView(
-                  children: [
-                    for (final c in _customers)
-                      ListTile(
-                        title: Text(c.fullName),
-                        subtitle: Text(c.phone ?? c.email ?? ''),
-                      ),
-                  ],
-                ),
+          ? StateView.error(message: _error!, onRetry: _load)
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _customers.isEmpty
+                  ? const StateView(
+                      icon: Icons.people_outline,
+                      title: 'No customers yet',
+                      message: 'Tap the button to add your first customer.',
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 88),
+                      itemCount: _customers.length,
+                      separatorBuilder: (_, _) =>
+                          const Divider(indent: 72, endIndent: Gap.lg),
+                      itemBuilder: (context, i) => _tile(_customers[i]),
+                    ),
+            ),
+    );
+  }
+
+  Widget _tile(Customer c) {
+    final scheme = Theme.of(context).colorScheme;
+    final name = c.fullName.trim();
+    final contact = c.phone ?? c.email ?? '';
+    return ListTile(
+      minTileHeight: 64,
+      leading: CircleAvatar(
+        backgroundColor: scheme.secondaryContainer,
+        foregroundColor: scheme.onSecondaryContainer,
+        child: Text(name.isEmpty ? '?' : name[0].toUpperCase()),
+      ),
+      title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: contact.isEmpty ? null : Text(contact),
     );
   }
 }
@@ -86,7 +125,9 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
   final _first = TextEditingController();
   final _last = TextEditingController();
   final _phone = TextEditingController();
-  String? _error;
+  String? _firstError;
+  String? _serverError;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -97,10 +138,16 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     if (_first.text.trim().isEmpty) {
-      setState(() => _error = 'First name is required.');
+      setState(() => _firstError = 'First name is required.');
       return;
     }
+    setState(() {
+      _firstError = null;
+      _serverError = null;
+      _busy = true;
+    });
     try {
       await SessionScope.of(context).pos.createCustomer({
         'firstName': _first.text.trim(),
@@ -109,32 +156,52 @@ class _NewCustomerDialogState extends State<_NewCustomerDialog> {
       });
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // The dialog stays open with everything typed so far, ready to retry.
+      if (mounted) setState(() => _serverError = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New customer'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: _first, decoration: const InputDecoration(labelText: 'First name')),
-            TextField(controller: _last, decoration: const InputDecoration(labelText: 'Last name')),
-            TextField(
-              controller: _phone,
-              decoration: const InputDecoration(labelText: 'Phone'),
-              keyboardType: TextInputType.phone,
-            ),
-            if (_error != null) Text(_error!),
-          ],
+    return AppDialog(
+      title: 'New customer',
+      primaryLabel: _busy ? 'Saving…' : 'Save',
+      busy: _busy,
+      onPrimary: _save,
+      onSecondary: () => Navigator.pop(context, false),
+      children: [
+        TextField(
+          controller: _first,
+          enabled: !_busy,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: 'First name',
+            errorText: _firstError,
+          ),
+          onChanged: (_) {
+            if (_firstError != null) setState(() => _firstError = null);
+          },
         ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        TextField(
+          controller: _last,
+          enabled: !_busy,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(labelText: 'Last name'),
+        ),
+        TextField(
+          controller: _phone,
+          enabled: !_busy,
+          decoration: const InputDecoration(labelText: 'Phone'),
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _save(),
+        ),
+        if (_serverError != null) StatusBanner.error(_serverError!),
       ],
     );
   }
