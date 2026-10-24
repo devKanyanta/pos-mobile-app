@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../core/api/api_client.dart';
 import '../models/json_utils.dart';
+import '../models/receipt_models.dart';
 import '../models/sale_models.dart';
 
 /// Sales, payments, refunds, voids and receipts endpoints.
@@ -82,9 +83,10 @@ class SalesApi {
           .map(Payment.fromJson)
           .toList();
 
-  /// `GET /receipts/sale/{saleId}`.
-  Future<Map<String, dynamic>> receiptForSale(int saleId) async =>
-      _map(await _client.get('/receipts/sale/$saleId'));
+  /// `GET /receipts/sale/{saleId}`: receipt number and fiscal (ZRA) details.
+  Future<ReceiptInfo> receiptForSale(int saleId) async => ReceiptInfo.fromJson(
+    _map(await _client.get('/receipts/sale/$saleId')),
+  );
 
   /// `GET /receipts/{id}/print` as plain text for the receipt view.
   Future<String> receiptText(int receiptId, {int width = 42}) async {

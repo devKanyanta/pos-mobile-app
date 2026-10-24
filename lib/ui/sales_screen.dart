@@ -4,6 +4,7 @@ import '../core/api/api_exception.dart';
 import '../core/session/session_scope.dart';
 import '../data/models/catalog_models.dart';
 import '../data/models/sale_models.dart';
+import 'receipt_dialog.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_dialog.dart';
 import 'widgets/app_sheet.dart';
@@ -276,6 +277,31 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     );
   }
 
+  /// Opens the receipt for [sale], using the full record from the server so
+  /// the items and payments are complete.
+  Future<void> _openReceipt(Sale sale) async {
+    if (_working) return;
+    final session = SessionScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _working = true);
+    Sale full;
+    try {
+      full = await session.sales.getSale(sale.id);
+    } on ApiException catch (e) {
+      NoticeBar.error(messenger, e.message);
+      return;
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+    if (!mounted) return;
+    await showReceiptDialog(
+      context,
+      full,
+      title: 'Receipt',
+      doneLabel: 'Close',
+    );
+  }
+
   Future<void> _run(
     Future<Object?> Function() action, {
     required String done,
@@ -344,97 +370,101 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         ? ('Paid', scheme.primaryContainer, scheme.onPrimaryContainer)
         : ('Unpaid', scheme.errorContainer, scheme.onErrorContainer);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.xs, Gap.md),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${s.saleNumber} · ${s.totalAmount.toStringAsFixed(2)}',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _working ? null : () => _openReceipt(s),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.xs, Gap.md),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${s.saleNumber} · ${s.totalAmount.toStringAsFixed(2)}',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: Gap.xs),
-                  Wrap(
-                    spacing: Gap.sm,
-                    runSpacing: Gap.xs,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: statusBackground,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: Gap.sm,
-                            vertical: 2,
+                    const SizedBox(height: Gap.xs),
+                    Wrap(
+                      spacing: Gap.sm,
+                      runSpacing: Gap.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: statusBackground,
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            statusLabel,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: statusForeground,
-                              fontWeight: FontWeight.w600,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: Gap.sm,
+                              vertical: 2,
+                            ),
+                            child: Text(
+                              statusLabel,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: statusForeground,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Text(
-                        '${s.saleStatus} · ${s.paymentStatus}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
+                        Text(
+                          '${s.saleStatus} · ${s.paymentStatus}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  if (when != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        when,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
+                      ],
                     ),
-                ],
+                    if (when != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          when,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            if (!s.isVoided && (canVoid || canRefund))
-              PopupMenuButton<String>(
-                tooltip: 'Sale actions',
-                enabled: !_working,
-                onSelected: (v) => v == 'void' ? _void(s) : _refund(s),
-                itemBuilder: (_) => [
-                  if (canVoid)
-                    PopupMenuItem(
-                      value: 'void',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.block, color: scheme.error),
-                        title: const Text('Void'),
+              if (!s.isVoided && (canVoid || canRefund))
+                PopupMenuButton<String>(
+                  tooltip: 'Sale actions',
+                  enabled: !_working,
+                  onSelected: (v) => v == 'void' ? _void(s) : _refund(s),
+                  itemBuilder: (_) => [
+                    if (canVoid)
+                      PopupMenuItem(
+                        value: 'void',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.block, color: scheme.error),
+                          title: const Text('Void'),
+                        ),
                       ),
-                    ),
-                  if (canRefund)
-                    PopupMenuItem(
-                      value: 'refund',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.undo, color: scheme.error),
-                        title: const Text('Refund'),
+                    if (canRefund)
+                      PopupMenuItem(
+                        value: 'refund',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.undo, color: scheme.error),
+                          title: const Text('Refund'),
+                        ),
                       ),
-                    ),
-                ],
-              )
-            else
-              const SizedBox(width: Gap.md),
-          ],
+                  ],
+                )
+              else
+                const SizedBox(width: Gap.md),
+            ],
+          ),
         ),
       ),
     );

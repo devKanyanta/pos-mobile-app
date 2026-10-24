@@ -62,6 +62,10 @@ class SaleItem {
     required this.totalAmount,
     required this.refundedQuantity,
     required this.itemStatus,
+    this.vatRate = 0,
+    this.vatAmount = 0,
+    this.discountAmount = 0,
+    this.zraTaxType,
   });
 
   final int id;
@@ -73,6 +77,10 @@ class SaleItem {
   final double totalAmount;
   final int refundedQuantity;
   final String itemStatus;
+  final double vatRate;
+  final double vatAmount;
+  final double discountAmount;
+  final String? zraTaxType;
 
   int get remainingQuantity => quantity - refundedQuantity;
 
@@ -86,6 +94,10 @@ class SaleItem {
     totalAmount: toDouble(json['totalAmount']),
     refundedQuantity: toInt(json['refundedQuantity']),
     itemStatus: toStr(json['itemStatus'], 'ACTIVE'),
+    vatRate: toDouble(json['vatRate']),
+    vatAmount: toDouble(json['vatAmount']),
+    discountAmount: toDouble(json['discountAmount']),
+    zraTaxType: toStrOrNull(json['zraTaxType']),
   );
 }
 
@@ -136,6 +148,7 @@ class Sale {
     required this.saleNumber,
     required this.customerId,
     required this.customerName,
+    this.customerPhone,
     required this.subtotal,
     required this.discountAmount,
     required this.vatAmount,
@@ -161,6 +174,7 @@ class Sale {
   final String saleNumber;
   final int? customerId;
   final String? customerName;
+  final String? customerPhone;
   final double subtotal;
   final double discountAmount;
   final double vatAmount;
@@ -190,6 +204,7 @@ class Sale {
     saleNumber: toStr(json['saleNumber']),
     customerId: toIntOrNull(json['customerId']),
     customerName: toStrOrNull(json['customerName']),
+    customerPhone: toStrOrNull(json['customerPhone']),
     subtotal: toDouble(json['subtotal']),
     discountAmount: toDouble(json['discountAmount']),
     vatAmount: toDouble(json['vatAmount']),

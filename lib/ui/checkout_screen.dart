@@ -6,8 +6,10 @@ import '../core/checkout/checkout_service.dart';
 import '../core/checkout/scan_checkout_controller.dart';
 import '../core/scanning/barcode_normalizer.dart';
 import '../core/session/session_scope.dart';
+import '../data/models/business_models.dart';
 import '../data/models/catalog_models.dart';
-import '../data/models/sale_models.dart';
+import 'customer_picker.dart';
+import 'receipt_dialog.dart';
 import 'sales_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_dialog.dart';
@@ -36,6 +38,7 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   ScanCheckoutController? _scan;
   CheckoutService? _checkout;
+  Customer? _customer;
   final TextEditingController _manualController = TextEditingController();
 
   List<PaymentMethod> _methods = const [];
@@ -211,6 +214,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         label: 'Amount received (leave empty for exact)',
         number: true,
         allowEmpty: true,
+        cashTotal: scan.cart.total,
         helper:
             'Estimated total ${scan.cart.total.toStringAsFixed(2)}. '
             'The server confirms the final amount.',
@@ -226,12 +230,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         method,
         reference: reference,
         amountReceived: received,
+        customerId: _customer?.id,
       );
       if (!mounted) return;
       scan.clear();
+      _customer = null;
       // The sale is done: don't leave a spinner running behind the receipt.
       setState(() => _paying = false);
-      await _showReceipt(sale);
+      await showReceiptDialog(context, sale);
     } on ApiException catch (e) {
       if (!mounted) return;
       // The cart and the pending sale id are kept, so retrying is safe.
@@ -288,6 +294,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     bool number = false,
     bool allowEmpty = false,
     String? helper,
+    double? cashTotal,
   }) {
     return showDialog<String>(
       context: context,
@@ -297,54 +304,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         number: number,
         allowEmpty: allowEmpty,
         helper: helper,
+        cashTotal: cashTotal,
       ),
     );
   }
 
-  Future<void> _showReceipt(Sale sale) {
-    final paid = sale.paymentStatus == 'PAID';
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AppDialog(
-        icon: paid ? Icons.check_circle_outline : Icons.receipt_long_outlined,
-        title: paid ? 'Sale complete' : 'Sale recorded',
-        hideSecondary: true,
-        primaryLabel: 'New sale',
-        onPrimary: () => Navigator.pop(context),
-        children: [
-          Text(
-            'Sale ${sale.saleNumber}',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          Text(
-            'Total ${sale.totalAmount.toStringAsFixed(2)}',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (sale.changeGiven > 0)
-            Text(
-              'Change ${sale.changeGiven.toStringAsFixed(2)}',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: scheme.primary,
-              ),
-            ),
-          if (!paid)
-            Text(
-              'Balance due ${sale.balanceDue.toStringAsFixed(2)}',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(color: scheme.error),
-            ),
-        ],
-      ),
-    );
+  Future<void> _pickCustomer() async {
+    final choice = await showCustomerPicker(context);
+    if (choice != null && mounted) setState(() => _customer = choice.customer);
   }
 
   Future<void> _confirmClear() async {
@@ -359,6 +326,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!ok || !mounted) return;
     _scan!.clear();
     _checkout!.reset();
+    setState(() => _customer = null);
   }
 
   @override
@@ -473,6 +441,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  /// The customer attached to this sale (or the walk-in default); tap to change.
+  Widget _customerRow() {
+    final scheme = Theme.of(context).colorScheme;
+    final customer = _customer;
+    return Card(
+      child: ListTile(
+        minTileHeight: 56,
+        enabled: !_paying,
+        leading: CircleAvatar(
+          backgroundColor: scheme.secondaryContainer,
+          foregroundColor: scheme.onSecondaryContainer,
+          child: Icon(customer == null ? Icons.person_outline : Icons.person),
+        ),
+        title: Text(customer?.fullName ?? 'Walk-in customer'),
+        subtitle: Text(
+          customer == null
+              ? 'Tap to attach a customer'
+              : (customer.phone ?? customer.email ?? 'Customer attached'),
+        ),
+        trailing: customer == null
+            ? const Icon(Icons.chevron_right)
+            : IconButton(
+                tooltip: 'Remove customer',
+                icon: const Icon(Icons.close),
+                onPressed: _paying ? null : () => setState(() => _customer = null),
+              ),
+        onTap: _paying ? null : _pickCustomer,
+      ),
+    );
+  }
+
   Widget _cartList(ScanCheckoutController scan) {
     final lines = scan.cart.lines;
     if (lines.isEmpty) {
@@ -485,10 +484,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final scheme = theme.colorScheme;
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, Gap.lg),
-      itemCount: lines.length,
+      itemCount: lines.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: Gap.sm),
       itemBuilder: (context, i) {
-        final line = lines[i];
+        if (i == 0) return _customerRow();
+        final line = lines[i - 1];
         return Card(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.xs, Gap.md),
@@ -608,6 +608,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
 /// A one-field prompt. It owns its controller so the controller outlives the
 /// dialog's closing animation.
+///
+/// With [cashTotal] it becomes the cash-tender prompt: quick amounts to tap and
+/// a live line saying whether the entry gives change or leaves a balance.
 class _TextPromptDialog extends StatefulWidget {
   const _TextPromptDialog({
     required this.title,
@@ -615,6 +618,7 @@ class _TextPromptDialog extends StatefulWidget {
     required this.number,
     required this.allowEmpty,
     this.helper,
+    this.cashTotal,
   });
 
   final String title;
@@ -622,6 +626,7 @@ class _TextPromptDialog extends StatefulWidget {
   final bool number;
   final bool allowEmpty;
   final String? helper;
+  final double? cashTotal;
 
   @override
   State<_TextPromptDialog> createState() => _TextPromptDialogState();
@@ -646,8 +651,30 @@ class _TextPromptDialogState extends State<_TextPromptDialog> {
     Navigator.pop(context, text);
   }
 
+  /// Notes the customer might hand over: the total rounded up to common steps.
+  List<double> _quickAmounts(double total) {
+    final amounts = <double>{};
+    for (final step in const [1, 5, 10, 50, 100]) {
+      final rounded = (total / step).ceil() * step.toDouble();
+      if (rounded >= total) amounts.add(rounded);
+    }
+    return (amounts.toList()..sort()).take(4).toList();
+  }
+
+  String? _liveHelper() {
+    final total = widget.cashTotal;
+    if (total == null) return widget.helper;
+    final entered = double.tryParse(_controller.text.trim());
+    if (entered == null) return widget.helper;
+    if (entered >= total) {
+      return 'Change due: ${(entered - total).toStringAsFixed(2)}';
+    }
+    return 'Short by ${(total - entered).toStringAsFixed(2)}; the rest stays as balance due.';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final total = widget.cashTotal;
     return AppDialog(
       title: widget.title,
       primaryLabel: 'Continue',
@@ -665,14 +692,32 @@ class _TextPromptDialogState extends State<_TextPromptDialog> {
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             labelText: widget.label,
-            helperText: widget.helper,
+            helperText: _liveHelper(),
             errorText: _error,
           ),
-          onChanged: (_) {
-            if (_error != null) setState(() => _error = null);
-          },
+          onChanged: (_) => setState(() => _error = null),
           onSubmitted: (_) => _submit(),
         ),
+        if (total != null)
+          Wrap(
+            spacing: Gap.sm,
+            runSpacing: Gap.sm,
+            children: [
+              ActionChip(
+                label: const Text('Exact'),
+                onPressed: () => setState(() => _controller.clear()),
+              ),
+              for (final amount in _quickAmounts(total))
+                ActionChip(
+                  label: Text(amount.toStringAsFixed(0)),
+                  onPressed: () => setState(
+                    () => _controller.text = amount.toStringAsFixed(
+                      amount == amount.roundToDouble() ? 0 : 2,
+                    ),
+                  ),
+                ),
+            ],
+          ),
       ],
     );
   }

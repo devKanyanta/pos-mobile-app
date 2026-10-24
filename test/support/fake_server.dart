@@ -48,6 +48,15 @@ class FakeServer {
   /// When set, adjustment requests fail with this server message.
   String? adjustmentError;
 
+  /// `GET /merchant` answer; null makes the endpoint fail with 404.
+  Map<String, dynamic>? merchant;
+
+  /// `GET /receipts/sale/{id}` answer; null makes the endpoint fail with 404.
+  Map<String, dynamic>? receipt;
+
+  /// Customers returned by `GET /customers`.
+  List<Map<String, dynamic>> customers = [];
+
   /// Movement rows returned by the history endpoints.
   List<Map<String, dynamic>> movements = [];
 
@@ -89,6 +98,19 @@ class FakeServer {
         'username': 'tester',
         'roles': [role],
       });
+    }
+    if (path == '/merchant' && request.method == 'GET') {
+      return merchant == null
+          ? _json({'message': 'No merchant profile'}, 404)
+          : _json(merchant!);
+    }
+    if (path.startsWith('/receipts/sale/')) {
+      return receipt == null
+          ? _json({'message': 'No receipt'}, 404)
+          : _json(receipt!);
+    }
+    if (path == '/customers' && request.method == 'GET') {
+      return _json(customers);
     }
     if (path == '/payment-methods') {
       return _json([
