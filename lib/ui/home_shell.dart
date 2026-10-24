@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'checkout_screen.dart';
 import 'customers_screen.dart';
 import 'products_screen.dart';
 import 'reports_screen.dart';
-import 'sales_screen.dart';
 import 'settings_screen.dart';
 
 /// Signed-in layout: bottom navigation across the POS sections.
@@ -18,7 +18,7 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   static const _pages = <Widget>[
-    SalesScreen(),
+    CheckoutScreen(),
     ProductsScreen(),
     CustomersScreen(),
     ReportsScreen(),
