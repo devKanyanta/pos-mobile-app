@@ -48,6 +48,13 @@ class PaymentInput {
       'transactionReference': transactionReference,
     if (payerPhone != null) 'payerPhone': payerPhone,
   };
+
+  factory PaymentInput.fromJson(Map<String, dynamic> json) => PaymentInput(
+    paymentMethodId: toInt(json['paymentMethodId']),
+    amount: toDoubleOrNull(json['amount']),
+    transactionReference: toStrOrNull(json['transactionReference']),
+    payerPhone: toStrOrNull(json['payerPhone']),
+  );
 }
 
 /// `SaleItemResponse`.

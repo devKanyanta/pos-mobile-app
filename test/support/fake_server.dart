@@ -48,6 +48,9 @@ class FakeServer {
   /// When set, adjustment requests fail with this server message.
   String? adjustmentError;
 
+  /// When set, device registration fails with this server message (503).
+  String? deviceRegisterError;
+
   /// `GET /merchant` answer; null makes the endpoint fail with 404.
   Map<String, dynamic>? merchant;
 
@@ -92,6 +95,21 @@ class FakeServer {
     requests.add(request);
     final path = request.url.path.replaceFirst('/api/v1', '');
 
+    if (path == '/sync/devices/register' && request.method == 'POST') {
+      if (deviceRegisterError != null) {
+        return _json({'message': deviceRegisterError}, 503);
+      }
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      return _json({
+        'id': 1,
+        'deviceId': body['deviceId'],
+        'name': body['name'],
+        'model': body['model'],
+        'appVersion': body['appVersion'],
+        'active': true,
+        'pendingQueueSize': 0,
+      });
+    }
     if (path == '/auth/login') {
       return _json({
         'token': 't',
