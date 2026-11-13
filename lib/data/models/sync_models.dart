@@ -106,6 +106,49 @@ class CatalogProduct {
   );
 }
 
+/// `GET /sync/catalog` (`CatalogResponse`): a full snapshot or a delta.
+class CatalogSnapshot {
+  const CatalogSnapshot({
+    required this.serverTime,
+    required this.full,
+    required this.products,
+    required this.categories,
+    required this.paymentMethods,
+    required this.productIds,
+  });
+
+  /// Pass back as `since` on the next pull. Kept exactly as the server wrote
+  /// it, so the server's clock is the only one involved.
+  final String serverTime;
+  final bool full;
+  final List<CatalogProduct> products;
+  final List<Category> categories;
+  final List<PaymentMethod> paymentMethods;
+
+  /// Every product id the server has; anything cached but missing here was
+  /// deleted. Null when the response did not carry the list, in which case
+  /// nothing may be deleted.
+  final List<int>? productIds;
+
+  factory CatalogSnapshot.fromJson(Map<String, dynamic> json) =>
+      CatalogSnapshot(
+        serverTime: toStr(json['serverTime']),
+        full: toBool(json['full']),
+        products: toMapList(json['products'])
+            .map(CatalogProduct.fromJson)
+            .toList(growable: false),
+        categories: toMapList(json['categories'])
+            .map(Category.fromJson)
+            .toList(growable: false),
+        paymentMethods: toMapList(json['paymentMethods'])
+            .map(PaymentMethod.fromJson)
+            .toList(growable: false),
+        productIds: json['productIds'] is List
+            ? [for (final id in json['productIds'] as List) toInt(id)]
+            : null,
+      );
+}
+
 /// `DeviceResponse` from the sync endpoints: one registered till.
 class Device {
   const Device({

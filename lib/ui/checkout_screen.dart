@@ -54,7 +54,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.didChangeDependencies();
     if (_scan != null) return;
     final session = SessionScope.of(context);
-    _scan = ScanCheckoutController(lookup: session.pos)
+    _scan = ScanCheckoutController(lookup: session.productLookup)
       ..addListener(_onScanChanged);
     _checkout = CheckoutService(session.sales);
     _loadMethods();
@@ -87,7 +87,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _loadError = null;
     });
     try {
-      final methods = await SessionScope.of(context).pos.listPaymentMethods();
+      final methods = await SessionScope.of(context).loadPaymentMethods();
       if (mounted) {
         setState(() => _methods = methods.where((m) => m.isActive).toList());
       }
@@ -152,7 +152,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<List<Product>?> _loadCatalogue() async {
     if (_catalogue != null) return _catalogue;
     try {
-      final all = await SessionScope.of(context).pos.listProducts();
+      final all = await SessionScope.of(context).loadAllProducts();
       _catalogue = all;
       return all;
     } on ApiException catch (e) {

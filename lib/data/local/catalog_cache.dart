@@ -113,6 +113,13 @@ class CatalogCache {
     return rows.map(_toProduct).toList(growable: false);
   }
 
+  /// Every cached product by name, inactive ones included — the same shape
+  /// as the full product list, for name searches without a network.
+  Future<List<Product>> allProducts() async {
+    final rows = await _db.rawQuery('$_productSelect ORDER BY p.name');
+    return rows.map(_toProduct).toList(growable: false);
+  }
+
   Future<List<Category>> categories() async {
     final rows = await _db.query('categories', orderBy: 'name');
     return [

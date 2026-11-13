@@ -51,6 +51,19 @@ class FakeServer {
   /// When set, device registration fails with this server message (503).
   String? deviceRegisterError;
 
+  /// What `GET /sync/catalog` knows. A pull without `since` returns all of
+  /// [catalogProducts]; a pull with it returns only those whose id is in
+  /// [catalogChangedIds]. `productIds` is always every id.
+  final Map<int, Map<String, dynamic>> catalogProducts = {};
+  final Set<int> catalogChangedIds = {};
+  String catalogServerTime = '2026-11-12T10:00:00.123456';
+
+  /// When true, `GET /sync/catalog` fails with a 500.
+  bool catalogFails = false;
+
+  /// When true, `GET /products/by-barcode` fails with a 500.
+  bool barcodeFails = false;
+
   /// `GET /merchant` answer; null makes the endpoint fail with 404.
   Map<String, dynamic>? merchant;
 
@@ -110,6 +123,35 @@ class FakeServer {
         'pendingQueueSize': 0,
       });
     }
+    if (path == '/sync/catalog' && request.method == 'GET') {
+      if (catalogFails) return _json({'message': 'boom'}, 500);
+      final since = request.url.queryParameters['since'];
+      final sent = since == null
+          ? catalogProducts.values.toList()
+          : [
+              for (final id in catalogChangedIds)
+                if (catalogProducts[id] != null) catalogProducts[id]!,
+            ];
+      return _json({
+        'serverTime': catalogServerTime,
+        'full': since == null,
+        'products': sent,
+        'categories': [
+          {'id': 1, 'name': 'Groceries'},
+        ],
+        'paymentMethods': [
+          {
+            'id': 1,
+            'name': 'Cash',
+            'code': 'CASH',
+            'isActive': true,
+            'type': 'CASH',
+            'requiresReference': false,
+          },
+        ],
+        'productIds': catalogProducts.keys.toList(),
+      });
+    }
     if (path == '/auth/login') {
       return _json({
         'token': 't',
@@ -151,6 +193,7 @@ class FakeServer {
       ]);
     }
     if (path == '/products/by-barcode') {
+      if (barcodeFails) return _json({'message': 'boom'}, 500);
       final product = products[request.url.queryParameters['barcode']];
       return product != null
           ? _json(product)
@@ -215,4 +258,26 @@ Map<String, dynamic> productJson(
   'active': active,
   'vatRate': 16.0,
   'trackInventory': true,
+};
+
+/// A product as `GET /sync/catalog` sends it.
+Map<String, dynamic> catalogItemJson(
+  int id,
+  String name, {
+  String? barcode,
+  double price = 10,
+  int stock = 5,
+  bool active = true,
+  int? categoryId,
+}) => {
+  'id': id,
+  'name': name,
+  'barcode': barcode,
+  'price': price,
+  'vatRate': 16.0,
+  'zraTaxType': 'A',
+  'trackInventory': true,
+  'stockQuantity': stock,
+  'active': active,
+  'categoryId': categoryId,
 };

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -7,12 +8,16 @@ import 'package:http/http.dart' as http;
 
 import '../../data/local/local_store.dart';
 import '../../data/models/auth_models.dart';
+import '../../data/models/catalog_models.dart';
 import '../../data/services/pos_api.dart';
 import '../../data/services/reports_api.dart';
 import '../../data/services/sales_api.dart';
 import '../../data/services/sync_api.dart';
 import '../api/api_client.dart';
 import '../api/token_store.dart';
+import '../checkout/product_lookup.dart';
+import '../sync/catalog_repository.dart';
+import '../sync/catalog_sync.dart';
 import '../sync/device_identity.dart';
 
 /// Default API root. Override at build time with
@@ -37,6 +42,7 @@ class Session extends ChangeNotifier {
     FlutterSecureStorage? settingsStorage,
     this._localStore,
     this._httpClient,
+    this.catalogSyncInterval = const Duration(minutes: 5),
   }) : _tokenStore = tokenStore ?? TokenStore(),
        _settings = settingsStorage ?? const FlutterSecureStorage() {
     _rebuildServices();
@@ -54,7 +60,15 @@ class Session extends ChangeNotifier {
   late SalesApi sales;
   late ReportsApi reports;
   late SyncApi sync;
+  CatalogRepository? _catalog;
+  CatalogSync? _catalogSync;
   Future<void>? _deviceRegistration;
+  Future<bool>? _initialCatalogSync;
+  Timer? _catalogTimer;
+
+  /// How often the catalogue is refreshed while signed in; null turns the
+  /// periodic refresh off (the pull after sign-in still happens).
+  final Duration? catalogSyncInterval;
 
   String? _username;
   List<String> _roles = const [];
@@ -88,7 +102,7 @@ class Session extends ChangeNotifier {
     final token = await _tokenStore.readToken();
     if (token == null || token.isEmpty) _username = null;
     _restored = true;
-    _registerDeviceLater();
+    _startSync();
     notifyListeners();
   }
 
@@ -126,11 +140,12 @@ class Session extends ChangeNotifier {
     await _tokenStore.save(token: auth.token, username: auth.username);
     _username = auth.username;
     _roles = auth.roles;
-    _registerDeviceLater();
+    _startSync();
     notifyListeners();
   }
 
   Future<void> signOut() async {
+    _stopSync();
     await _tokenStore.clear();
     _username = null;
     _roles = const [];
@@ -154,9 +169,12 @@ class Session extends ChangeNotifier {
   Future<void> setBaseUrl(String url) async {
     final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
     await _settings.write(key: _baseUrlKey, value: trimmed);
+    final changed = trimmed != _baseUrl;
     _baseUrl = trimmed;
     _rebuildServices();
-    _registerDeviceLater();
+    // A bookmark from another server would hide products this one has.
+    if (changed) await _catalogSync?.reset();
+    _startSync();
     notifyListeners();
   }
 
@@ -164,12 +182,30 @@ class Session extends ChangeNotifier {
   @visibleForTesting
   Future<void>? get deviceRegistration => _deviceRegistration;
 
-  /// Registers this till with the server, without blocking the caller. A
-  /// failure is quietly retried on the next sign-in, restore or URL change —
-  /// nothing else depends on it yet.
-  void _registerDeviceLater() {
+  /// The catalogue pull that follows registration, so tests can await it.
+  @visibleForTesting
+  Future<bool>? get initialCatalogSync => _initialCatalogSync;
+
+  /// Products and payment methods for checkout: the server's live answer,
+  /// or the cached catalogue when the server cannot be reached.
+  ProductLookup get productLookup => _catalog ?? pos;
+
+  Future<List<PaymentMethod>> loadPaymentMethods() =>
+      _catalog?.paymentMethods() ?? pos.listPaymentMethods();
+
+  Future<List<Product>> loadAllProducts() =>
+      _catalog?.allProducts() ?? pos.listProducts();
+
+  /// Registers this till, pulls the catalogue, and keeps pulling it on a
+  /// timer — all without blocking the caller. Failures are quietly retried
+  /// at the next sign-in, restore, URL change or timer tick; nothing waits
+  /// on them.
+  void _startSync() {
+    _catalogTimer?.cancel();
     final store = _localStore;
-    if (store == null || _username == null) return;
+    final catalogSync = _catalogSync;
+    if (store == null || catalogSync == null || _username == null) return;
+
     _deviceRegistration = DeviceIdentity(store.meta)
         .ensureRegistered(
           sync,
@@ -179,10 +215,22 @@ class Session extends ChangeNotifier {
           appVersion: kAppVersion,
         )
         .then((_) {});
+    _initialCatalogSync = _deviceRegistration!.then((_) => catalogSync.sync());
+
+    final interval = catalogSyncInterval;
+    if (interval != null) {
+      _catalogTimer = Timer.periodic(interval, (_) => catalogSync.sync());
+    }
+  }
+
+  void _stopSync() {
+    _catalogTimer?.cancel();
+    _catalogTimer = null;
   }
 
   void _handleUnauthorized() {
     if (_username == null) return;
+    _stopSync();
     _tokenStore.clear();
     _username = null;
     _roles = const [];
@@ -202,10 +250,20 @@ class Session extends ChangeNotifier {
     sales = SalesApi(client);
     reports = ReportsApi(client);
     sync = SyncApi(client);
+    final store = _localStore;
+    if (store != null) {
+      _catalog = CatalogRepository(pos: pos, cache: store.catalog);
+      _catalogSync = CatalogSync(
+        api: sync,
+        cache: store.catalog,
+        meta: store.meta,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _stopSync();
     _client?.close();
     super.dispose();
   }
