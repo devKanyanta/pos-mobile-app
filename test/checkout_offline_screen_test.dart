@@ -48,6 +48,7 @@ void main() {
           httpClient: server.client,
           localStore: store,
           catalogSyncInterval: null,
+          uploadRetryInterval: null,
         );
         await session.signIn(username: 'tester', password: 'secret');
         await session.initialCatalogSync;

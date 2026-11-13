@@ -149,6 +149,60 @@ class CatalogSnapshot {
       );
 }
 
+/// What the server did with one uploaded sale (`SyncSaleResult`).
+class SyncSaleResult {
+  const SyncSaleResult({
+    required this.clientSaleId,
+    required this.status,
+    required this.saleNumber,
+    required this.receiptNumber,
+    required this.conflicts,
+    required this.error,
+  });
+
+  final String clientSaleId;
+
+  /// `CREATED` (recorded now), `DUPLICATE` (recorded earlier — safe to drop
+  /// from the queue) or `REJECTED` (invalid; see [error]).
+  final String status;
+  final String? saleNumber;
+  final String? receiptNumber;
+
+  /// Problems the server recorded on a created sale for a manager to review
+  /// (e.g. `NEGATIVE_STOCK`, `PRICE_MISMATCH`).
+  final List<String> conflicts;
+  final String? error;
+
+  bool get isRecorded => status == 'CREATED' || status == 'DUPLICATE';
+  bool get isRejected => status == 'REJECTED';
+
+  factory SyncSaleResult.fromJson(Map<String, dynamic> json) => SyncSaleResult(
+    clientSaleId: toStr(json['clientSaleId']),
+    status: toStr(json['status']),
+    saleNumber: toStrOrNull(json['saleNumber']),
+    receiptNumber: toStrOrNull(json['receiptNumber']),
+    conflicts: [
+      if (json['conflicts'] is List)
+        for (final c in json['conflicts'] as List) toStr(c),
+    ],
+    error: toStrOrNull(json['error']),
+  );
+}
+
+/// `POST /sync/sales` answer: one [SyncSaleResult] per uploaded sale.
+class SyncSalesResponse {
+  const SyncSalesResponse({required this.results});
+
+  final List<SyncSaleResult> results;
+
+  factory SyncSalesResponse.fromJson(Map<String, dynamic> json) =>
+      SyncSalesResponse(
+        results: toMapList(json['results'])
+            .map(SyncSaleResult.fromJson)
+            .toList(growable: false),
+      );
+}
+
 /// `DeviceResponse` from the sync endpoints: one registered till.
 class Device {
   const Device({

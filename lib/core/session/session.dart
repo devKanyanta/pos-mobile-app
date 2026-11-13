@@ -24,6 +24,7 @@ import '../checkout/product_lookup.dart';
 import '../sync/catalog_repository.dart';
 import '../sync/catalog_sync.dart';
 import '../sync/device_identity.dart';
+import '../sync/sale_uploader.dart';
 
 /// Default API root. Override at build time with
 /// `--dart-define=KANTEMBA_API_URL=http://host:8081/api/v1`.
@@ -48,6 +49,8 @@ class Session extends ChangeNotifier {
     this._localStore,
     this._httpClient,
     this.catalogSyncInterval = const Duration(minutes: 5),
+    this.uploadRetryInterval = const Duration(seconds: 30),
+    this.connectivity,
   }) : _tokenStore = tokenStore ?? TokenStore(),
        _settings = settingsStorage ?? const FlutterSecureStorage() {
     _rebuildServices();
@@ -67,6 +70,9 @@ class Session extends ChangeNotifier {
   late SyncApi sync;
   CatalogRepository? _catalog;
   CatalogSync? _catalogSync;
+  SaleUploader? _uploader;
+  Timer? _uploadTimer;
+  StreamSubscription<bool>? _connectivitySub;
 
   /// Saves sales on the device when the server is unreachable; null when the
   /// app runs without a local store.
@@ -78,6 +84,15 @@ class Session extends ChangeNotifier {
   /// How often the catalogue is refreshed while signed in; null turns the
   /// periodic refresh off (the pull after sign-in still happens).
   final Duration? catalogSyncInterval;
+
+  /// How often queued offline sales are retried while any are waiting; null
+  /// turns the retry timer off (uploads still run on sign-in, on the refresh
+  /// timer and when the network returns).
+  final Duration? uploadRetryInterval;
+
+  /// Whether the phone has a network, emitting on changes (see
+  /// `deviceConnectivity`). Null ignores network changes.
+  final Stream<bool>? connectivity;
 
   String? _username;
   List<String> _roles = const [];
@@ -231,12 +246,28 @@ class Session extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// One refresh of everything the till keeps for offline use.
+  /// One refresh of everything the till keeps for offline use. Queued sales
+  /// go up first, so the stock the catalogue pull brings back already has
+  /// them taken off.
   Future<bool> _refreshOfflineData() async {
-    final ok = await _catalogSync?.sync() ?? false;
-    if (ok) await _cacheMerchant();
-    return ok;
+    try {
+      final upload = await _uploader?.run();
+      if (upload != null && upload.unreachable) return false;
+      final ok = await _catalogSync?.sync() ?? false;
+      if (ok) await _cacheMerchant();
+      return ok;
+    } catch (_) {
+      // Unattended background work: the next trigger tries again.
+      return false;
+    }
   }
+
+  /// Uploads waiting offline sales and refreshes the offline data, now. The
+  /// sync status screen's "Sync now" will call this.
+  Future<bool> syncNow() => _refreshOfflineData();
+
+  /// The most recent upload outcome source, for the status screen.
+  SaleUploader? get uploader => _uploader;
 
   Future<List<PaymentMethod>> loadPaymentMethods() =>
       _catalog?.paymentMethods() ?? pos.listPaymentMethods();
@@ -249,7 +280,7 @@ class Session extends ChangeNotifier {
   /// at the next sign-in, restore, URL change or timer tick; nothing waits
   /// on them.
   void _startSync() {
-    _catalogTimer?.cancel();
+    _stopSync();
     final store = _localStore;
     final catalogSync = _catalogSync;
     if (store == null || catalogSync == null || _username == null) return;
@@ -271,11 +302,33 @@ class Session extends ChangeNotifier {
     if (interval != null) {
       _catalogTimer = Timer.periodic(interval, (_) => _refreshOfflineData());
     }
+
+    final retry = uploadRetryInterval;
+    if (retry != null) {
+      _uploadTimer = Timer.periodic(retry, (_) async {
+        try {
+          if (await store.saleQueue.pendingCount() > 0) await _uploader?.run();
+        } catch (_) {}
+      });
+    }
+
+    _connectivitySub?.cancel();
+    _connectivitySub = connectivity?.listen((available) {
+      _catalog?.setNetworkAvailable(available);
+      if (available) _refreshOfflineData();
+    });
   }
 
   void _stopSync() {
     _catalogTimer?.cancel();
     _catalogTimer = null;
+    _uploadTimer?.cancel();
+    _uploadTimer = null;
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
+    // Nobody is listening for the network coming back, so don't remember that
+    // it went away.
+    _catalog?.setNetworkAvailable(true);
   }
 
   void _handleUnauthorized() {
@@ -308,6 +361,13 @@ class Session extends ChangeNotifier {
         queue: store.saleQueue,
       );
       offlineSales = OfflineSales(queue: store.saleQueue, meta: store.meta);
+      _uploader = SaleUploader(
+        api: sync,
+        queue: store.saleQueue,
+        meta: store.meta,
+        identity: DeviceIdentity(store.meta),
+        appVersion: kAppVersion,
+      );
       _catalogSync = CatalogSync(
         api: sync,
         cache: store.catalog,

@@ -61,6 +61,28 @@ class FakeServer {
   /// When true, `GET /sync/catalog` fails with a 500.
   bool catalogFails = false;
 
+  /// Client sale ids the fake server has recorded (from uploads).
+  final Set<String> uploadedSaleIds = {};
+
+  /// Uploaded sales the fake server rejects, with this error.
+  final Map<String, String> rejectedSaleIds = {};
+
+  /// When set, `POST /sync/sales` is refused whole with this status.
+  int? uploadFailureStatus;
+
+  /// When true, the upload answer carries no results at all.
+  bool uploadAnswersNothing = false;
+
+  /// When set, `POST /sync/sales` records the sales but then drops the
+  /// connection, like a reply lost on the way back.
+  bool uploadLosesReply = false;
+
+  /// Conflict codes the fake attaches to every sale it creates.
+  List<String> uploadConflicts = [];
+
+  /// The largest batch the fake accepts, like `SYNC_MAX_BATCH_SIZE`.
+  int maxBatchSize = 100;
+
   /// When true, `GET /products/by-barcode` fails with a 500.
   bool barcodeFails = false;
 
@@ -154,6 +176,49 @@ class FakeServer {
         ],
         'productIds': catalogProducts.keys.toList(),
       });
+    }
+    if (path == '/sync/heartbeat' && request.method == 'POST') {
+      return _json({'id': 1, 'deviceId': bodyOf(request)['deviceId']});
+    }
+    if (path == '/sync/sales' && request.method == 'POST') {
+      if (uploadFailureStatus != null) {
+        return _json({
+          'message': 'Device has been deactivated by a manager',
+        }, uploadFailureStatus!);
+      }
+      final body = bodyOf(request);
+      final sales = (body['sales'] as List).cast<Map<String, dynamic>>();
+      if (sales.length > maxBatchSize) {
+        return _json({'message': 'A sync batch may contain at most $maxBatchSize sales'}, 400);
+      }
+      final results = <Map<String, dynamic>>[];
+      for (final sale in sales) {
+        final id = sale['clientSaleId'] as String;
+        if (rejectedSaleIds.containsKey(id)) {
+          results.add({
+            'clientSaleId': id,
+            'status': 'REJECTED',
+            'conflicts': <String>[],
+            'error': rejectedSaleIds[id],
+          });
+        } else if (!uploadedSaleIds.add(id)) {
+          results.add({
+            'clientSaleId': id,
+            'status': 'DUPLICATE',
+            'saleNumber': 'S-$id',
+            'conflicts': <String>[],
+          });
+        } else {
+          results.add({
+            'clientSaleId': id,
+            'status': 'CREATED',
+            'saleNumber': 'S-$id',
+            'conflicts': uploadConflicts,
+          });
+        }
+      }
+      if (uploadLosesReply) throw http.ClientException('reply lost');
+      return _json({'results': uploadAnswersNothing ? <Object>[] : results});
     }
     if (path == '/auth/login') {
       return _json({

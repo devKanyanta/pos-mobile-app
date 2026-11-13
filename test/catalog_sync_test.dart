@@ -273,7 +273,7 @@ void main() {
         for (final r in server.requests)
           if (r.url.path.contains('/sync/')) r.url.path.split('/').last,
       ];
-      expect(order, ['register', 'catalog']);
+      expect(order, ['register', 'heartbeat', 'catalog']);
       expect(await store.catalog.productCount(), 1);
     });
 

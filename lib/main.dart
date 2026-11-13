@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/session/session.dart';
 import 'core/session/session_scope.dart';
+import 'core/sync/connectivity.dart';
 import 'data/local/local_store.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
@@ -25,7 +26,10 @@ class KantembaApp extends StatefulWidget {
 }
 
 class _KantembaAppState extends State<KantembaApp> {
-  late final Session _session = Session(localStore: widget.localStore);
+  late final Session _session = Session(
+    localStore: widget.localStore,
+    connectivity: widget.localStore == null ? null : deviceConnectivity(),
+  );
 
   @override
   void initState() {

@@ -40,11 +40,22 @@ class CatalogRepository implements ProductLookup {
   final DateTime Function() _clock;
 
   DateTime? _heldUntil;
+  bool _noNetwork = false;
 
-  /// True while lookups skip the server because it was just unreachable.
+  /// True while lookups skip the server: it was just unreachable, or the
+  /// phone reports no network at all.
   bool get isOffline {
+    if (_noNetwork) return true;
     final until = _heldUntil;
     return until != null && _clock().isBefore(until);
+  }
+
+  /// The phone's own view of the network. Losing it entirely means the
+  /// server cannot be reached, so lookups go to the cache at once; getting a
+  /// network back lifts any hold so the next lookup asks the server again.
+  void setNetworkAvailable(bool available) {
+    _noNetwork = !available;
+    if (available) _heldUntil = null;
   }
 
   @override

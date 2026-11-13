@@ -111,6 +111,7 @@ void main() {
       );
       await session.signIn(username: 'tester', password: 'secret');
       await session.deviceRegistration;
+      await session.initialCatalogSync;
 
       final posts = server.posts('/sync/devices/register').toList();
       expect(posts, hasLength(1));
@@ -122,6 +123,7 @@ void main() {
       await session.signOut();
       await session.signIn(username: 'tester', password: 'secret');
       await session.deviceRegistration;
+      await session.initialCatalogSync;
       expect(server.posts('/sync/devices/register'), hasLength(1));
     });
 

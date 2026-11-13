@@ -38,6 +38,44 @@ class SyncApi {
     return CatalogSnapshot.fromJson(_map(json));
   }
 
+  /// `POST /sync/sales`: uploads offline sales. [pendingQueueSize] is how
+  /// many are still queued on the device after this batch. Re-sending a sale
+  /// the server already has is answered `DUPLICATE`, so retries are safe.
+  Future<SyncSalesResponse> uploadSales({
+    required String deviceId,
+    required int pendingQueueSize,
+    required List<OfflineSaleDraft> sales,
+  }) async {
+    final json = await _client.post(
+      '/sync/sales',
+      body: {
+        'deviceId': deviceId,
+        'pendingQueueSize': pendingQueueSize,
+        'sales': [for (final sale in sales) sale.toJson()],
+      },
+    );
+    return SyncSalesResponse.fromJson(_map(json));
+  }
+
+  /// `POST /sync/heartbeat`: tells the server this till is online and how
+  /// many transactions are waiting on it.
+  Future<void> heartbeat({
+    required String deviceId,
+    required int pendingQueueSize,
+    required bool online,
+    String? appVersion,
+  }) async {
+    await _client.post(
+      '/sync/heartbeat',
+      body: {
+        'deviceId': deviceId,
+        'pendingQueueSize': pendingQueueSize,
+        'online': online,
+        'appVersion': ?appVersion,
+      },
+    );
+  }
+
   static Map<String, dynamic> _map(Object? json) {
     if (json is Map) return Map<String, dynamic>.from(json);
     throw const FormatException('Expected a JSON object from the server.');
