@@ -1,4 +1,5 @@
 import '../../data/local/catalog_cache.dart';
+import '../../data/local/sale_queue.dart';
 import '../../data/models/catalog_models.dart';
 import '../../data/models/sync_models.dart';
 import '../../data/services/pos_api.dart';
@@ -18,16 +19,23 @@ import '../checkout/product_lookup.dart';
 /// Only connection failures fall back — a server that answers with an error
 /// is believed. With nothing cached yet the original error is rethrown,
 /// because an empty cache would wrongly report every barcode as unknown.
+///
+/// Stock levels have the units of sales still waiting in the upload [queue]
+/// taken off, whichever way they were answered: the server will deduct them
+/// when those sales arrive, so they are already gone from the shelf and the
+/// till must not sell them a second time.
 class CatalogRepository implements ProductLookup {
   CatalogRepository({
     required this._pos,
     required this._cache,
+    this.queue,
     this.offlineHold = const Duration(seconds: 15),
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   final PosApi _pos;
   final CatalogCache _cache;
+  final SaleQueue? queue;
   final Duration offlineHold;
   final DateTime Function() _clock;
 
@@ -40,14 +48,18 @@ class CatalogRepository implements ProductLookup {
   }
 
   @override
-  Future<Product?> findByBarcode(String barcode) => _remoteOrCache(
-    () async {
-      final product = await _pos.findByBarcode(barcode);
-      if (product != null) await _remember([product]);
-      return product;
-    },
-    () => _cache.productByBarcode(barcode),
-  );
+  Future<Product?> findByBarcode(String barcode) async {
+    final product = await _remoteOrCache(
+      () async {
+        final product = await _pos.findByBarcode(barcode);
+        if (product != null) await _remember([product]);
+        return product;
+      },
+      () => _cache.productByBarcode(barcode),
+    );
+    if (product == null) return null;
+    return (await _withoutQueued([product])).single;
+  }
 
   /// Active payment methods are filtered by the caller; this returns all.
   Future<List<PaymentMethod>> paymentMethods() => _remoteOrCache(
@@ -63,14 +75,27 @@ class CatalogRepository implements ProductLookup {
   );
 
   /// The whole catalogue for name searches.
-  Future<List<Product>> allProducts() => _remoteOrCache(
-    () async {
+  Future<List<Product>> allProducts() async => _withoutQueued(
+    await _remoteOrCache(() async {
       final products = await _pos.listProducts();
       await _remember(products);
       return products;
-    },
-    () => _cache.allProducts(),
+    }, () => _cache.allProducts()),
   );
+
+  Future<List<Product>> _withoutQueued(List<Product> products) async {
+    final queued = await queue?.pendingQuantities() ?? const <int, int>{};
+    if (queued.isEmpty) return products;
+    return [
+      for (final product in products)
+        if (product.trackInventory && queued.containsKey(product.id))
+          product.withStock(
+            (product.stockQuantity - queued[product.id]!).clamp(0, 1 << 31),
+          )
+        else
+          product,
+    ];
+  }
 
   Future<T> _remoteOrCache<T>(
     Future<T> Function() remote,

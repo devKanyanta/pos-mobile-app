@@ -175,6 +175,7 @@ class Sale {
     required this.needsReview,
     required this.items,
     required this.payments,
+    this.offline = false,
   });
 
   final int id;
@@ -201,6 +202,11 @@ class Sale {
   final bool needsReview;
   final List<SaleItem> items;
   final List<Payment> payments;
+
+  /// True for a sale saved on this device while the server was unreachable.
+  /// Its amounts were calculated here, it has no server id yet, and it has no
+  /// fiscal (ZRA) details until it has been uploaded.
+  final bool offline;
 
   bool get isVoided => saleStatus == 'VOIDED';
   bool get isFullyPaid => paymentStatus == 'PAID';

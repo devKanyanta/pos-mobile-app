@@ -3,7 +3,9 @@ import 'dart:math';
 import '../../data/models/catalog_models.dart';
 import '../../data/models/sale_models.dart';
 import '../../data/services/sales_api.dart';
+import '../api/api_exception.dart';
 import 'cart.dart';
+import 'offline_sales.dart';
 
 /// Completes a sale in a single atomic request.
 ///
@@ -16,12 +18,25 @@ import 'cart.dart';
 /// Retrying after a failure reuses one `clientSaleId`, so a request whose
 /// response was lost cannot create a second sale; the server answers the
 /// retry with the sale it already recorded.
+///
+/// With [offline] set, a sale that cannot reach the server is saved on the
+/// device instead of failing, and the cashier gets a provisional receipt
+/// ([Sale.offline]). Only a connection failure does this: when the server
+/// answers with an error (out of stock, a bad request) the sale is refused as
+/// before. [preferOffline] says the server was just found unreachable, so the
+/// sale is saved at once instead of waiting out another network timeout.
 class CheckoutService {
-  CheckoutService(this._sales, {String Function()? idGenerator})
-    : _newId = idGenerator ?? _randomId;
+  CheckoutService(
+    this._sales, {
+    String Function()? idGenerator,
+    this.offline,
+    this.preferOffline,
+  }) : _newId = idGenerator ?? _randomId;
 
   final SalesApi _sales;
   final String Function() _newId;
+  final OfflineSales? offline;
+  final bool Function()? preferOffline;
 
   String? _pendingId;
   String? _pendingSignature;
@@ -63,12 +78,31 @@ class CheckoutService {
       _pendingSignature = signature;
     }
 
-    final sale = await _sales.createSale(
-      items: items,
-      payments: [payment],
+    final clientSaleId = _pendingId!;
+    Future<Sale> saveOffline() => offline!.record(
+      clientSaleId: clientSaleId,
+      cart: cart,
+      method: method,
+      payment: payment,
       customerId: customerId,
-      clientSaleId: _pendingId,
     );
+
+    Sale sale;
+    if (offline != null && (preferOffline?.call() ?? false)) {
+      sale = await saveOffline();
+    } else {
+      try {
+        sale = await _sales.createSale(
+          items: items,
+          payments: [payment],
+          customerId: customerId,
+          clientSaleId: clientSaleId,
+        );
+      } on ApiException catch (e) {
+        if (offline == null || !e.isNetwork) rethrow;
+        sale = await saveOffline();
+      }
+    }
 
     _pendingId = null;
     _pendingSignature = null;

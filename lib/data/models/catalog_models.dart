@@ -52,6 +52,34 @@ class Product {
   final bool zraMapped;
   final bool zraRegistered;
 
+  /// This product with a different stock level (e.g. after sales that are
+  /// still waiting to be uploaded).
+  Product withStock(int stock) => Product(
+    id: id,
+    name: name,
+    barcode: barcode,
+    sku: sku,
+    price: price,
+    costPrice: costPrice,
+    stockQuantity: stock,
+    active: active,
+    vatRate: vatRate,
+    trackInventory: trackInventory,
+    categoryId: categoryId,
+    categoryName: categoryName,
+    reorderLevel: reorderLevel,
+    lowStock: lowStock,
+    zraTaxType: zraTaxType,
+    zraItemCode: zraItemCode,
+    zraItemClassCode: zraItemClassCode,
+    zraItemTypeCode: zraItemTypeCode,
+    zraOriginCountryCode: zraOriginCountryCode,
+    zraPackagingUnitCode: zraPackagingUnitCode,
+    zraQuantityUnitCode: zraQuantityUnitCode,
+    zraMapped: zraMapped,
+    zraRegistered: zraRegistered,
+  );
+
   factory Product.fromJson(Map<String, dynamic> json) => Product(
     id: toInt(json['id']),
     name: toStr(json['name']),

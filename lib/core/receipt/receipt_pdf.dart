@@ -184,6 +184,15 @@ List<pw.Widget> _content(ReceiptData data) {
     if (sale.changeGiven > 0)
       row('Change', formatMoney(sale.changeGiven), style: bold),
     if (!paid) row('Balance due', formatMoney(sale.balanceDue), style: bold),
+    if (sale.offline) ...[
+      rule(),
+      centered('OFFLINE RECEIPT', style: bold),
+      centered(
+        'Saved on the till. The ZRA fiscal invoice follows once the till '
+        'is back online.',
+        style: small,
+      ),
+    ],
     if (fiscal != null && fiscal.zraStatus != null)
       ..._fiscal(fiscal, small, bold, row, rule),
     rule(),

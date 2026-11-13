@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -9,12 +10,16 @@ import 'package:http/http.dart' as http;
 import '../../data/local/local_store.dart';
 import '../../data/models/auth_models.dart';
 import '../../data/models/catalog_models.dart';
+import '../../data/models/merchant_models.dart';
+import '../../data/models/sale_models.dart';
 import '../../data/services/pos_api.dart';
 import '../../data/services/reports_api.dart';
 import '../../data/services/sales_api.dart';
 import '../../data/services/sync_api.dart';
 import '../api/api_client.dart';
 import '../api/token_store.dart';
+import '../checkout/offline_sales.dart';
+import '../receipt/receipt_data.dart';
 import '../checkout/product_lookup.dart';
 import '../sync/catalog_repository.dart';
 import '../sync/catalog_sync.dart';
@@ -62,6 +67,10 @@ class Session extends ChangeNotifier {
   late SyncApi sync;
   CatalogRepository? _catalog;
   CatalogSync? _catalogSync;
+
+  /// Saves sales on the device when the server is unreachable; null when the
+  /// app runs without a local store.
+  OfflineSales? offlineSales;
   Future<void>? _deviceRegistration;
   Future<bool>? _initialCatalogSync;
   Timer? _catalogTimer;
@@ -190,6 +199,45 @@ class Session extends ChangeNotifier {
   /// or the cached catalogue when the server cannot be reached.
   ProductLookup get productLookup => _catalog ?? pos;
 
+  /// True while the server was recently found unreachable.
+  bool get isOffline => _catalog?.isOffline ?? false;
+
+  /// The business profile as last fetched while online, for receipts made
+  /// offline; null before the first successful fetch.
+  Future<MerchantProfile?> cachedMerchant() async {
+    final raw = await _localStore?.meta.get(SyncMeta.merchantKey);
+    if (raw == null) return null;
+    try {
+      return MerchantProfile.fromJson(
+        Map<String, dynamic>.from(jsonDecode(raw) as Map),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// What the receipt of a sale saved offline shows: the sale itself plus the
+  /// cached business details. Nothing is fetched, so it never waits on a
+  /// network that is known to be down.
+  Future<ReceiptData> offlineReceipt(Sale sale) async =>
+      ReceiptData(sale: sale, merchant: await cachedMerchant());
+
+  Future<void> _cacheMerchant() async {
+    final store = _localStore;
+    if (store == null) return;
+    try {
+      final merchant = await pos.getMerchant();
+      await store.meta.set(SyncMeta.merchantKey, jsonEncode(merchant.toJson()));
+    } catch (_) {}
+  }
+
+  /// One refresh of everything the till keeps for offline use.
+  Future<bool> _refreshOfflineData() async {
+    final ok = await _catalogSync?.sync() ?? false;
+    if (ok) await _cacheMerchant();
+    return ok;
+  }
+
   Future<List<PaymentMethod>> loadPaymentMethods() =>
       _catalog?.paymentMethods() ?? pos.listPaymentMethods();
 
@@ -215,11 +263,13 @@ class Session extends ChangeNotifier {
           appVersion: kAppVersion,
         )
         .then((_) {});
-    _initialCatalogSync = _deviceRegistration!.then((_) => catalogSync.sync());
+    _initialCatalogSync = _deviceRegistration!.then(
+      (_) => _refreshOfflineData(),
+    );
 
     final interval = catalogSyncInterval;
     if (interval != null) {
-      _catalogTimer = Timer.periodic(interval, (_) => catalogSync.sync());
+      _catalogTimer = Timer.periodic(interval, (_) => _refreshOfflineData());
     }
   }
 
@@ -252,7 +302,12 @@ class Session extends ChangeNotifier {
     sync = SyncApi(client);
     final store = _localStore;
     if (store != null) {
-      _catalog = CatalogRepository(pos: pos, cache: store.catalog);
+      _catalog = CatalogRepository(
+        pos: pos,
+        cache: store.catalog,
+        queue: store.saleQueue,
+      );
+      offlineSales = OfflineSales(queue: store.saleQueue, meta: store.meta);
       _catalogSync = CatalogSync(
         api: sync,
         cache: store.catalog,

@@ -56,7 +56,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final session = SessionScope.of(context);
     _scan = ScanCheckoutController(lookup: session.productLookup)
       ..addListener(_onScanChanged);
-    _checkout = CheckoutService(session.sales);
+    _checkout = CheckoutService(
+      session.sales,
+      offline: session.offlineSales,
+      preferOffline: () => session.isOffline,
+    );
     _loadMethods();
   }
 

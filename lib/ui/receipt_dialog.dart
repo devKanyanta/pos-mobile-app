@@ -30,8 +30,17 @@ Future<void> showReceiptDialog(
     context: context,
     builder: (context) => ReceiptDialog(
       initial: ReceiptData(sale: sale),
-      load: () => ReceiptData.load(session.pos, session.sales, sale),
-      title: title ?? (paid ? 'Sale complete' : 'Sale recorded'),
+      // A sale saved offline has nothing on the server to fetch yet.
+      load: sale.offline
+          ? () => session.offlineReceipt(sale)
+          : () => ReceiptData.load(session.pos, session.sales, sale),
+      title:
+          title ??
+          (sale.offline
+              ? 'Saved offline'
+              : paid
+              ? 'Sale complete'
+              : 'Sale recorded'),
       doneLabel: doneLabel,
       output: output,
     ),
@@ -187,6 +196,16 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
+                    if (sale.offline) ...[
+                      const SizedBox(height: Gap.md),
+                      const StatusBanner(
+                        'No connection. This sale is saved on this device and '
+                        'will be sent to the server, and to ZRA, when the '
+                        'connection returns. Give the customer this receipt '
+                        'as proof of sale.',
+                        kind: BannerKind.warning,
+                      ),
+                    ],
                     const SizedBox(height: Gap.lg),
                     _paper(context),
                   ],

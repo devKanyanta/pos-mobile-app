@@ -23,6 +23,12 @@ class SyncMeta {
   /// Device-local time of the last successful sales upload.
   static const lastUploadKey = 'lastUploadAt';
 
+  /// Last offline receipt number handed out on this till (a counter).
+  static const offlineReceiptSeqKey = 'offlineReceiptSeq';
+
+  /// The business profile as last fetched, for receipts printed offline.
+  static const merchantKey = 'merchantProfile';
+
   Future<String?> get(String key) async {
     final rows = await _db.query(
       'sync_meta',

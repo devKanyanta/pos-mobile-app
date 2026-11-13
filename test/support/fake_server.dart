@@ -64,6 +64,9 @@ class FakeServer {
   /// When true, `GET /products/by-barcode` fails with a 500.
   bool barcodeFails = false;
 
+  /// When set, `POST /sales` is refused with this status and a stock message.
+  int? saleFailureStatus;
+
   /// `GET /merchant` answer; null makes the endpoint fail with 404.
   Map<String, dynamic>? merchant;
 
@@ -226,6 +229,9 @@ class FakeServer {
       return _json(movements);
     }
     if (path == '/sales' && request.method == 'POST') {
+      if (saleFailureStatus != null) {
+        return _json({'message': 'Not enough stock'}, saleFailureStatus!);
+      }
       return _json(saleResponse, 201);
     }
     return _json({'message': 'No endpoint matches this path'}, 404);

@@ -24,6 +24,18 @@ class MerchantProfile {
   final String plan;
   final Map<String, bool> features;
 
+  Map<String, dynamic> toJson() => {
+    'accountId': accountId,
+    'businessName': businessName,
+    'tpin': tpin,
+    'phone': phone,
+    'email': email,
+    'address': address,
+    'receiptFooter': receiptFooter,
+    'plan': plan,
+    'features': features,
+  };
+
   bool hasFeature(String name) => features[name] ?? false;
 
   factory MerchantProfile.fromJson(Map<String, dynamic> json) {

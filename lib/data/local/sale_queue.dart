@@ -50,6 +50,42 @@ class SaleQueue {
     return rows.map(_toQueuedSale).toList(growable: false);
   }
 
+  /// The queued sale with this id, whatever its status, or null.
+  Future<QueuedSale?> find(String clientSaleId) async {
+    final rows = await _db.query(
+      'queued_sales',
+      where: 'client_sale_id = ?',
+      whereArgs: [clientSaleId],
+    );
+    return rows.isEmpty ? null : _toQueuedSale(rows.first);
+  }
+
+  /// Units of each product sold in PENDING sales that the server has not
+  /// seen yet, keyed by product id. The server will deduct them when the
+  /// sales upload, so until then they are no longer on the shelf.
+  Future<Map<int, int>> pendingQuantities() async {
+    final rows = await _db.query(
+      'queued_sales',
+      columns: ['payload'],
+      where: 'status = ?',
+      whereArgs: [QueuedSaleStatus.pending.wireName],
+    );
+    final totals = <int, int>{};
+    for (final row in rows) {
+      final draft = OfflineSaleDraft.fromJson(
+        Map<String, dynamic>.from(jsonDecode(row['payload'] as String)),
+      );
+      for (final item in draft.items) {
+        totals.update(
+          item.productId,
+          (n) => n + item.quantity,
+          ifAbsent: () => item.quantity,
+        );
+      }
+    }
+    return totals;
+  }
+
   Future<int> pendingCount() => _count(QueuedSaleStatus.pending);
 
   Future<int> rejectedCount() => _count(QueuedSaleStatus.rejected);
